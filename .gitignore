@@ -1,0 +1,19 @@
+# Simulation files
+*.simc
+
+# OS generated files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Editor/IDE files
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Backup files
+*.bak
+*.orig
+*.tmp
