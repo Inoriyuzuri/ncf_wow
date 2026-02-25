@@ -1,19 +1,77 @@
 --============================================================
 -- 刺杀盗贼循环 (Assassination Rogue APL)
+-- 12.0 Midnight 版本
 -- 模块化文件，由主文件通过 Nn:Require() 加载
--- 使用全局 NCF 表访问主文件函数
 --============================================================
+
+--[[
+优先级列表：
+
+=== 脱战准备 ===
+- 潜行 (1784): 脱战自动潜行
+
+=== 打断 ===
+- 脚踢 (1766): 5码, 需面朝
+
+=== 冷却技能 ===
+1. 死亡印记 (360194): 绞喉&割裂在目标上 且 弑君CD<=2 且 有毒伤buff
+2. 饰品/药水/种族: 弑君debuff在目标上 (爆发模式)
+3. 弑君 (385627): 绞喉&割裂在目标上 且 (死亡印记在目标上 或 死亡印记CD>52)
+4. 消失 (1856)(单体): 单目标 且 有强化绞喉天赋 且 死亡印记未就绪
+5. 消失 (1856)(AOE): 多目标 且 有强化绞喉天赋
+
+=== 蓟茶 ===
+- 蓟茶 (381623): 能量<50% 且 战斗即将结束 (TTD<10)
+
+=== 核心DoT ===
+1. 绞喉 (703)(强化): 有强化绞喉buff或潜行 且 绞喉剩余<=宽松阈值
+2. 绞喉 (703)(普通): 连击点缺口>=1 且 可刷新 且 TTD>12
+3. 割裂 (1943): 连击点>=5 且 可刷新 且 TTD>12 且 (无至暗之夜buff 或 割裂未激活)
+
+=== 攒连击点 (generate) ===
+条件: 连击点未满 或 (猩红风暴天赋 且 敌人>=5 且 DoT未铺满)
+1. 猩红风暴 (1247227): 多目标 且 有目标缺少DoT
+2. 毒刃 (5938): 至暗之夜buff 且 连击点缺口=1 且 敌人<=3 且 有剧毒短刺天赋
+3. 伏击 (8676): 敌人<=1+盲区天赋 且 (潜行 或 盲区buff)
+4. 毁伤 (1329): 敌人<=1+盲区天赋
+5. 刀扇 (51723): 敌人>1+盲区天赋
+
+=== 花连击点 (spend) ===
+条件: 连击点已满
+1. 毒伤 (32645): 无情猎手层数<4
+2. 毒伤 (32645): 能量>70%
+
+Buff ID 参考:
+- 毒伤: 32645
+- 至暗之夜: 457280
+- 强化绞喉: 392403
+- 盲区: 121153
+- 无情猎手: 0 (TODO: 需要ID)
+
+Debuff ID 参考:
+- 绞喉: 703
+- 割裂: 1943
+- 死亡印记: 360194
+- 弑君: 385627
+
+天赋 ID 参考:
+- 强化绞喉: 381632
+- 锋线: 0 (TODO: 需要ID)
+- 剧毒短刺: 0 (TODO: 需要ID)
+- 盲区: 0 (TODO: 需要ID)
+- 猩红风暴: 0 (TODO: 需要ID)
+]]
 
 --============================================================
 -- 1. 注册技能列表 (用于技能模式设置)
 --============================================================
 NCF.RegisterSpells("ROGUE", 1, {
-    -- 爆发技能 (默认在平缓模式下不使用)
+    -- 冷却技能
     { id = 1856, name = "消失", default = "burst" },
     { id = 360194, name = "死亡印记", default = "burst" },
     { id = 385627, name = "弑君", default = "burst" },
-    
-    -- 平缓技能 (默认始终使用)
+
+    -- 普通技能
     { id = 1784, name = "潜行", default = "normal" },
     { id = 1329, name = "毁伤", default = "normal" },
     { id = 8676, name = "伏击", default = "normal" },
@@ -22,6 +80,8 @@ NCF.RegisterSpells("ROGUE", 1, {
     { id = 703, name = "绞喉", default = "normal" },
     { id = 51723, name = "刀扇", default = "normal" },
     { id = 1247227, name = "猩红风暴", default = "normal" },
+    { id = 5938, name = "毒刃", default = "normal" },
+    { id = 381623, name = "蓟茶", default = "normal" },
     { id = 1766, name = "脚踢", default = "normal" },
 })
 
@@ -29,7 +89,6 @@ NCF.RegisterSpells("ROGUE", 1, {
 -- 2. 技能ID定义
 --============================================================
 local SPELL = {
-    -- 基础技能
     Stealth = 1784,           -- 潜行
     Kick = 1766,              -- 脚踢
     Mutilate = 1329,          -- 毁伤
@@ -38,79 +97,44 @@ local SPELL = {
     Rupture = 1943,           -- 割裂
     Garrote = 703,            -- 绞喉
     FanOfKnives = 51723,      -- 刀扇
-    SliceAndDice = 315496,    -- 切割
-    
-    -- 冷却技能
     Vanish = 1856,            -- 消失
     Deathmark = 360194,       -- 死亡印记
     Kingsbane = 385627,       -- 弑君
-    ColdBlood = 382245,       -- 冷血
     ThistleTea = 381623,      -- 蓟茶
     Shiv = 5938,              -- 毒刃
-    
-    -- AOE 技能
-    CrimsonStorm = 1247227,   -- 猩红风暴 (传染割裂和绞喉)
+    CrimsonTempest = 1247227, -- 猩红风暴
 }
 
 --============================================================
 -- 3. 天赋ID定义
 --============================================================
 local TALENT = {
-    Kingsbane = 385627,           -- 弑君
-    DashingScoundrel = 381797,    -- 风流剑客
-    ViciousVenoms = 381634,       -- 恶毒之毒
-    AmplifyingPoison = 381664,    -- 增幅毒药
-    ScentOfBlood = 394080,        -- 血腥气息
-    IndiscriminateCarnage = 385754, -- 无差别杀戮
-    ImprovedGarrote = 381632,     -- 强化绞喉
-    MasterAssassin = 255989,      -- 大师刺客
-    Subterfuge = 108208,          -- 潜伏
-    ArterialPrecision = 400801,   -- 动脉精准
-    CausticSpatter = 421975,      -- 腐蚀飞溅
-    MomentumOfDespair = 457270,   -- 绝望之势
-    ThrownPrecision = 457111,     -- 投掷精准
-    ZoldyckRecipe = 381798,       -- 佐迪克秘方
-    Deathstalker = 457054,        -- 死亡追踪者
-    PoisonBomb = 255544,          -- 毒药炸弹
-    ShroudedSuffocation = 385478, -- 暗影窒息
+    ImprovedGarrote = 381632, -- 强化绞喉
+    RazorWire = 0,            -- 锋线 (TODO: 需要ID)
+    ToxicStiletto = 0,        -- 剧毒短刺 (TODO: 需要ID)
+    Blindside = 0,            -- 盲区 (TODO: 需要ID)
+    CrimsonTempest = 0,       -- 猩红风暴 (TODO: 需要ID)
 }
 
 --============================================================
--- 4. Buff ID定义 (玩家身上的增益效果)
+-- 4. Buff ID定义
 --============================================================
 local BUFF = {
-    Envenom = 32645,              -- 毒伤
-    SliceAndDice = 315496,        -- 切割
-    DarkestNight = 457280,        -- 至暗之夜
-    IndiscriminateCarnage = 385754, -- 无差别杀戮
-    MasterAssassin = 256735,      -- 大师刺客
-    Blindside = 121153,           -- 盲点
-    ScentOfBlood = 394080,        -- 血腥气息
-    ClearTheWitnesses = 457178,   -- 清除证人
-    FateboundCoinTails = 452903,  -- 命运硬币(反)
-    FateboundCoinHeads = 452922,  -- 命运硬币(正)
-    ImprovedGarrote = 392403,     -- 强化绞喉 (潜行后获得)
-    LingeringDarkness = 457273,   -- 挥之不去的黑暗
-    ColdBlood = 382245,           -- 冷血
-    Stealth = 1784,               -- 潜行
-    Vanish = 11327,               -- 消失
-    ShadowDance = 185422,         -- 暗影之舞
-    Subterfuge = 115191,          -- 潜伏
+    Envenom = 32645,          -- 毒伤
+    DarkestNight = 457280,    -- 至暗之夜
+    ImprovedGarrote = 392403, -- 强化绞喉
+    Blindside = 121153,       -- 盲区
+    ImplacableTracker = 0,    -- 无情猎手 (TODO: 需要ID)
 }
 
 --============================================================
--- 5. Debuff ID定义 (目标身上的减益效果)
+-- 5. Debuff ID定义
 --============================================================
 local DEBUFF = {
-    Kingsbane = 385627,           -- 弑君
-    Deathmark = 360194,           -- 死亡印记
-    Garrote = 703,                -- 绞喉
-    Rupture = 1943,               -- 割裂
-    DeadlyPoison = 2818,          -- 致命毒药
-    AmplifyingPoison = 381664,    -- 增幅毒药
-    CausticSpatter = 421976,      -- 腐蚀飞溅
-    DeathstalkersMark = 457052,   -- 死亡追踪者印记
-    Shiv = 319504,                -- 毒刃减速
+    Garrote = 703,            -- 绞喉
+    Rupture = 1943,           -- 割裂
+    Deathmark = 360194,       -- 死亡印记
+    Kingsbane = 385627,       -- 弑君
 }
 
 --============================================================
@@ -119,19 +143,24 @@ local DEBUFF = {
 local HasBuff = NCF.HasBuff
 local HasDebuff = NCF.HasDebuff
 local HasTalent = NCF.HasTalent
-local IsSpellReady = NCF.IsSpellReady
-local IsStealthed = NCF.IsStealthed
-local GetBuffRemain = NCF.GetBuffRemain
+local GetBuffStacks = NCF.GetBuffStacks
 local GetDebuffRemain = NCF.GetDebuffRemain
-local GetDebuffStacks = NCF.GetDebuffStacks
 local GetSpellCooldownRemain = NCF.GetSpellCooldownRemain
 local GetActiveEnemyAmount = NCF.GetActiveEnemyAmount
-local GetCombatTime = NCF.GetCombatTime
 local ShouldSkipSpell = NCF.ShouldSkipSpell
 local SetEnemyCount = NCF.SetEnemyCount
+local IsStealthed = NCF.IsStealthed
+local GetUnitPower = NCF.GetUnitPower
+local GetUnitPowerMax = NCF.GetUnitPowerMax
 
 local function GetComboPoints()
-    return NCF.GetUnitPower("player", "combopoints")
+    return GetUnitPower("player", "combopoints")
+end
+
+local function GetEnergyPct()
+    local energy = GetUnitPower("player", "energy") or 0
+    local maxEnergy = GetUnitPowerMax("player", "energy") or 100
+    return (energy / maxEnergy) * 100
 end
 
 --============================================================
@@ -139,407 +168,215 @@ end
 --============================================================
 local function CreateAssassinationRotation()
 
-    --[[
-        获取有效连击点消耗上限
-        - 正常情况下为 5 点
-        - 当拥有"至暗之夜"(Darkest Night) buff 时为 7 点
-        - 这会影响何时使用终结技
-    ]]
-    local function GetEffectiveSpendCP()
-        if HasBuff(BUFF.DarkestNight) then
-            return 7
-        end
-        return 5
-    end
-
-    --[[
-        消失/潜行 使用逻辑
-        
-        优先级：
-        1. 非战斗状态 → 使用潜行 (Stealth, 1784)
-        2. 战斗状态 → 只在死亡印记和弑君都在2秒内就绪时使用消失
-        
-        消失的目的是配合"强化绞喉"天赋，在潜行状态下绞喉造成额外伤害
-        流程：消失 → 强化绞喉 → 死亡印记 → 弑君
-        
-        注意：战斗开始前10秒，盗贼从潜行开怪自带强化绞喉，不需要消失
-    ]]
-    local function AssassinationVanish()
-        -- 非战斗状态：优先使用普通潜行而非消失
-        if not UnitAffectingCombat("player") and not IsStealthed() and IsSpellReady(SPELL.Stealth) then
-            if not ShouldSkipSpell(SPELL.Stealth) then
-                return SPELL.Stealth
-            end
-        end
-        
-        if not IsSpellReady(SPELL.Vanish) then return nil end
-        
-        -- 检查消失是否被禁用/爆发限制
-        if ShouldSkipSpell(SPELL.Vanish) then return nil end
-        
-        -- 战斗前10秒，从潜行开怪自带强化绞喉，不需要消失
-        local combatTime = GetCombatTime()
-        if combatTime > 0 and combatTime < 10 then
-            return nil
-        end
-        
-        -- 战斗中：只在死亡印记和弑君都在2秒内就绪时使用消失
-        local deathmarkCD = GetSpellCooldownRemain(SPELL.Deathmark)
-        local kingsbaneCD = GetSpellCooldownRemain(SPELL.Kingsbane)
-        
-        if HasTalent(TALENT.Kingsbane) then
-            -- 有弑君天赋：两者都在2秒内就绪
-            if deathmarkCD <= 2 and kingsbaneCD <= 2 then
-                return SPELL.Vanish
-            end
-        else
-            -- 没有弑君天赋：只检查死亡印记
-            if deathmarkCD <= 2 then
-                return SPELL.Vanish
-            end
-        end
-        
-        return nil
-    end
-
-    --[[
-        冷却技能 (Cooldowns) 管理
-        
-        优先级顺序：
-        1. 消失 (Vanish) - 只在死亡印记和弑君都在2秒内就绪时使用（战斗10秒后）
-        2. 死亡印记 (Deathmark) - 目标有割裂和绞喉时使用
-        3. 弑君 (Kingsbane) - 和死亡印记对齐，CD差距>10秒时才单独释放
-        
-        爆发流程：消失 → 强化绞喉 → 死亡印记 → 弑君
-        
-        注意：战斗开始前10秒，盗贼从潜行开怪自带强化绞喉
-        此时直接释放死亡印记和弑君，不需要等消失
-    ]]
-    local function AssassinationCooldowns()
-        -- 获取战斗时间
-        local combatTime = GetCombatTime()
-        local isOpener = combatTime > 0 and combatTime < 10  -- 开怪阶段
-        
-        -- 消失：只在死亡印记和弑君都在2秒内就绪时使用（开怪阶段不需要消失）
-        if not isOpener then
-            local vanishSpell = AssassinationVanish()
-            if vanishSpell then return vanishSpell end
-        end
-        
-        -- 获取两个大技能的CD
-        local deathmarkCD = GetSpellCooldownRemain(SPELL.Deathmark)
-        local kingsbaneCD = GetSpellCooldownRemain(SPELL.Kingsbane)
-        
-		if NCF.enablePotion and NCF.burstModeEnabled and HasDebuff(DEBUFF.Kingsbane) then
-			NCF.UseTrinket()
-			NCF.UseCombatPotion()
-            local racialSpell = NCF.GetRacialSpell()
-            if racialSpell and IsSpellReady(racialSpell) then
-                return "spell", racialSpell
-            end			
-		end
-		
-        -- 死亡印记：目标有割裂和绞喉时使用
-        local deathmarkCondition = HasDebuff(DEBUFF.Rupture) and HasDebuff(DEBUFF.Garrote)
-        if deathmarkCondition and IsSpellReady(SPELL.Deathmark) and not ShouldSkipSpell(SPELL.Deathmark) then
-            if HasTalent(TALENT.Kingsbane) then
-                -- 有弑君天赋：弑君也在2秒内就绪时才开死亡印记
-                if kingsbaneCD <= 2 then
-                    return SPELL.Deathmark
-                end
-                -- 否则等待对齐（不释放）
-            else
-                -- 没有弑君天赋：直接使用
-                return SPELL.Deathmark
-            end
-        end
-        
-        -- 弑君：和死亡印记对齐
-        if HasTalent(TALENT.Kingsbane) and IsSpellReady(SPELL.Kingsbane) and not ShouldSkipSpell(SPELL.Kingsbane) then
-            -- 只有当死亡印记CD > 10秒时才单独释放弑君
-            if deathmarkCD > 10 then
-                return SPELL.Kingsbane
-            end
-            -- 否则等待对齐（不释放）
-        end
-        
-        return nil
-    end
-
-    --[[
-        潜行状态 动作优先级
-        在潜行、消失或相关 buff 期间的特殊行为
-        
-        优先级：
-        1. 强化绞喉 - 配合死亡印记爆发 (最高优先级)
-        2. 伏击上死亡追踪者印记 (Deathstalker 天赋)
-        3. 毒伤维护 (弑君期间保持 buff)
-        4. 大师刺客期间毒伤
-    ]]
-    local function AssassinationStealthed()
-        local cp = GetComboPoints()
-        local effectiveSpendCP = GetEffectiveSpendCP()
-        
-        -- 强化绞喉天赋：潜行状态下绞喉有额外伤害
-        -- 配合死亡印记爆发窗口，优先打强化绞喉
-        if HasTalent(TALENT.ImprovedGarrote) and IsStealthed() and not ShouldSkipSpell(SPELL.Garrote) then
-            -- 死亡印记就绪时，立即打绞喉
-            if IsSpellReady(SPELL.Deathmark) then
-                return "spell", SPELL.Garrote
-            end
-            -- 或者绞喉即将掉落时刷新
-            if GetDebuffRemain(DEBUFF.Garrote) < 12 then
-                return "spell", SPELL.Garrote
-            end
-        end
-        
-        -- 死亡追踪者天赋：用伏击上印记 debuff
-        if HasTalent(TALENT.Deathstalker) and not HasDebuff(DEBUFF.DeathstalkersMark) and cp < effectiveSpendCP then
-            if not ShouldSkipSpell(SPELL.Ambush) then
-                return "spell", SPELL.Ambush
-            end
-        end
-        
-        -- 弑君期间：保持毒伤 buff (提高弑君伤害)
-        if cp >= effectiveSpendCP and HasDebuff(DEBUFF.Kingsbane) and GetBuffRemain(BUFF.Envenom) <= 3 then
-            if HasDebuff(DEBUFF.DeathstalkersMark) or HasBuff(BUFF.ColdBlood) or (HasBuff(BUFF.DarkestNight) and cp == 7) then
-                if not ShouldSkipSpell(SPELL.Envenom) then
-                    return "spell", SPELL.Envenom
-                end
-            end
-        end
-        
-        -- 大师刺客 buff 期间：利用暴击加成打毒伤
-        if cp >= effectiveSpendCP and HasBuff(BUFF.MasterAssassin) then
-            if HasDebuff(DEBUFF.DeathstalkersMark) or HasBuff(BUFF.ColdBlood) or (HasBuff(BUFF.DarkestNight) and cp == 7) then
-                if not ShouldSkipSpell(SPELL.Envenom) then
-                    return "spell", SPELL.Envenom
-                end
-            end
-        end
-        
-        return nil, nil
-    end
-
-    --[[
-        检查10码内是否有目标缺少割裂或绞喉
-        返回: needSpread (是否需要传染), allHaveDots (所有目标都有DoT)
-    ]]
-    local function CheckAoEDotsStatus()
-        local results = {GetActiveEnemyAmount(10, false)}
-        local total = results[1]
-        if total == 0 then
-            return false, false
-        end
-        
-        local withDots = 0
-        for i = 2, total + 1 do
-            local unit = results[i]
-            if unit and HasDebuff(DEBUFF.Rupture, unit) and HasDebuff(DEBUFF.Garrote, unit) then
-                withDots = withDots + 1
-            end
-        end
-        
-        return withDots < total, withDots == total
-    end
-
-    --[[
-        核心 DoT 维护
-        保持绞喉 (Garrote) 和割裂 (Rupture) 的高覆盖率
-        
-        刷新时机：
-        - 绞喉：剩余 <5.4 秒时刷新 (30% 持续时间)
-        - 割裂：剩余 <7.2 秒时刷新 (30% 持续时间)
-    ]]
-    local function AssassinationCoreDot(cp, effectiveSpendCP, regenSaturated)
-        -- 绞喉：低连击点时维护，避免浪费连击点
-        if cp < effectiveSpendCP and GetDebuffRemain(DEBUFF.Garrote) < 5.4 then
-            if not ShouldSkipSpell(SPELL.Garrote) then
-                return SPELL.Garrote
-            end
-        end
-        
-        -- 割裂：满连击点时维护，但不在冷血/至暗之夜 buff 期间
-        -- (这些 buff 应该用来打毒伤而非割裂)
-        if cp >= effectiveSpendCP and not HasBuff(BUFF.ColdBlood) and not HasBuff(BUFF.DarkestNight) then
-            if GetDebuffRemain(DEBUFF.Rupture) < 7.2 then
-                if not ShouldSkipSpell(SPELL.Rupture) then
-                    return SPELL.Rupture
-                end
-            end
-        end
-        
-        return nil
-    end
-
-    --[[
-        AOE DoT 传染
-        当10码内有目标缺少割裂或绞喉时，使用猩红风暴传染
-    ]]
-    local function AssassinationAoEDot(enemyCount)
-        if enemyCount < 2 then return nil end
-        
-        local needSpread, allHaveDots = CheckAoEDotsStatus()
-        
-        -- 有目标缺少DoT时，使用猩红风暴传染
-        if needSpread and IsSpellReady(SPELL.CrimsonStorm) and not ShouldSkipSpell(SPELL.CrimsonStorm) then
-            return SPELL.CrimsonStorm
-        end
-        
-        return nil
-    end
-
-    --[[
-        直接伤害技能
-        填充技能和终结技的使用逻辑
-        
-        优先级：
-        1. 毒伤 (Envenom) - 满连击点时的主要输出
-        2. 至暗之夜毒伤 - 7 连击点时使用
-        3. 伏击 (Ambush) - 盲点触发或潜行状态
-        4. 刀扇/毁伤 - AOE用刀扇，单体用毁伤
-    ]]
-    local function AssassinationDirect(cp, cpDeficit, effectiveSpendCP, notPooling, singleTarget, cdSoon, enemyCount)
-        -- 是否使用填充技：连击点未满，且不需要为 CD 囤能量
-        local useFiller = cp <= effectiveSpendCP and (not cdSoon or notPooling or not singleTarget)
-        
-        -- 毒伤：满连击点时使用 (非至暗之夜状态)
-        if not HasBuff(BUFF.DarkestNight) and cp >= effectiveSpendCP then
-            -- 不囤能量时使用，或者增幅毒药层数满时使用
-            if notPooling or GetDebuffStacks(DEBUFF.AmplifyingPoison) >= 20 or not singleTarget then
-                if not ShouldSkipSpell(SPELL.Envenom) then
-                    return SPELL.Envenom
-                end
-            end
-        end
-        
-        -- 至暗之夜毒伤：需要 7 连击点
-        if HasBuff(BUFF.DarkestNight) and cp >= 7 then
-            if not ShouldSkipSpell(SPELL.Envenom) then
-                return SPELL.Envenom
-            end
-        end
-        
-        -- 伏击：盲点 (Blindside) 触发时免费使用，或潜行状态下使用
-        if useFiller and (HasBuff(BUFF.Blindside) or IsStealthed()) then
-            -- 避免在弑君+死亡印记期间浪费伏击 (除非是盲点触发)
-            if not HasDebuff(DEBUFF.Kingsbane) or not HasDebuff(DEBUFF.Deathmark) or HasBuff(BUFF.Blindside) then
-                if not ShouldSkipSpell(SPELL.Ambush) then
-                    return SPELL.Ambush
-                end
-            end
-        end
-        
-        -- 填充技能：AOE用刀扇，单体用毁伤
-        if useFiller then
-            -- AOE模式 (>=2目标)：检查是否所有目标都有DoT
-            if enemyCount >= 2 then
-                local needSpread, allHaveDots = CheckAoEDotsStatus()
-                -- 所有目标都有DoT时，用刀扇
-                if allHaveDots and not ShouldSkipSpell(SPELL.FanOfKnives) then
-                    return SPELL.FanOfKnives
-                end
-            end
-            
-            -- 单体或DoT未铺满时，用毁伤
-            if not ShouldSkipSpell(SPELL.Mutilate) then
-                return SPELL.Mutilate
-            end
-        end
-        
-        return nil
-    end
-
-    --[[
-        刺杀盗贼循环主函数
-        整合所有子函数，按优先级返回下一个应该使用的技能
-        
-        优先级顺序：
-        0. 强化绞喉 buff 存在时立即打绞喉 (最高优先级)
-        1. 潜行状态特殊动作
-        2. 冷却技能 (爆发)
-        3. 核心 DoT 维护 (当前目标)
-        4. AOE DoT 传染 (猩红风暴)
-        5. 直接伤害 (毒伤、刀扇/毁伤)
-    ]]
     local function Rotation()
-	
-        -- 非战斗中自动进入潜行
-        if not UnitAffectingCombat("player") and not IsMounted() and not IsStealthed() 
+        -- 获取敌人数量
+        local enemyCount = GetActiveEnemyAmount(10, false)
+        SetEnemyCount(enemyCount)
+
+        -- 获取 GCD
+        local gcd = math.max(GetSpellCooldownRemain(61304), 0.25)
+
+        -- 获取资源
+        local cp = GetComboPoints()
+        local hasDarkestNight = HasBuff(BUFF.DarkestNight, "player")
+        local maxCP = hasDarkestNight and 7 or 5
+        local cpDeficit = maxCP - cp
+
+        -- 判断技能是否可用 (CD <= GCD)
+        local function IsReady(spellId)
+            return GetSpellCooldownRemain(spellId) <= gcd
+        end
+
+        -- 常用状态缓存
+        local inCombat = UnitAffectingCombat("player")
+        local singleTarget = enemyCount <= 1
+        local hasGarrote = HasDebuff(DEBUFF.Garrote, "target")
+        local hasRupture = HasDebuff(DEBUFF.Rupture, "target")
+        local hasDeathmark = HasDebuff(DEBUFF.Deathmark, "target")
+        local hasEnvenomBuff = HasBuff(BUFF.Envenom, "player")
+        local hasImprovedGarrote = HasBuff(BUFF.ImprovedGarrote, "player")
+        local implacableStacks = GetBuffStacks(BUFF.ImplacableTracker, "player")
+        local deathmarkCD = GetSpellCooldownRemain(SPELL.Deathmark)
+        local kingsbaneCD = GetSpellCooldownRemain(SPELL.Kingsbane)
+        local garroteRemain = GetDebuffRemain(DEBUFF.Garrote, "target")
+        local ruptureRemain = GetDebuffRemain(DEBUFF.Rupture, "target")
+        local hasBlindsideTalent = HasTalent(TALENT.Blindside)
+        local blindsideValue = hasBlindsideTalent and 1 or 0
+
+        -- 绞喉刷新阈值: 基础18秒的30% = 5.4秒, 有锋线天赋+6秒 → 24秒的30% = 7.2秒
+        local garroteRefresh = HasTalent(TALENT.RazorWire) and 7.2 or 5.4
+        -- 割裂刷新阈值: 5连击点 = 24秒的30% = 7.2秒
+        local ruptureRefresh = 7.2
+
+        --==========================================================
+        -- 脱战准备: 自动潜行
+        --==========================================================
+        if not inCombat and not IsMounted() and not IsStealthed()
             and not UnitCastingInfo("player") and not UnitChannelInfo("player") then
-            if IsSpellReady(SPELL.Stealth) and not ShouldSkipSpell(SPELL.Stealth) then
+            if IsReady(SPELL.Stealth) and not ShouldSkipSpell(SPELL.Stealth) then
                 return "spell", SPELL.Stealth
             end
         end
-		
 
-        
-        local cp = GetComboPoints()
-        local effectiveSpendCP = GetEffectiveSpendCP()
-        local cpDeficit = effectiveSpendCP - cp
-        
-        -- 获取附近敌人数量 (10码内360度) 并更新全局变量
-        local enemyCount = GetActiveEnemyAmount(10, false)
-        SetEnemyCount(enemyCount)
-        
-        -- 状态变量
-        local singleTarget = enemyCount <= 1   -- 单目标模式：附近只有1个或更少敌人
-        local notPooling = true                -- 不需要囤能量
-        local cdSoon = false                   -- CD 即将就绪
-        local regenSaturated = false           -- 能量回复饱和
-        
-        -- 以下需要战斗中才执行
-        if not UnitAffectingCombat("player") then return 'spell', 61304 end
-		
-        -- 0. 强化绞喉 buff (392403) 存在时，立即打绞喉 (最高优先级)
-        if HasBuff(BUFF.ImprovedGarrote) and not ShouldSkipSpell(SPELL.Garrote) then
-            return "spell", SPELL.Garrote
+        -- 以下需要战斗中才执行 (自己/目标/队友任一在战斗中)
+        if not inCombat and not NCF.IsInCombat() then
+            return "spell", 61304
         end
-        
-        local stealthed = IsStealthed()
-        
-        -- 打断：5码内面前有可打断的敌人
-        if IsSpellReady(SPELL.Kick) and not ShouldSkipSpell(SPELL.Kick) then
-            local interruptTarget = NCF.GetInterruptTarget(5, true)
+
+        --==========================================================
+        -- 打断: 脚踢 5码 不需要面朝
+        --==========================================================
+        if IsReady(SPELL.Kick) and not ShouldSkipSpell(SPELL.Kick) then
+            local interruptTarget = NCF.GetInterruptTarget(5, false)
             if interruptTarget then
-                return "spell", SPELL.Kick, interruptTarget
+                return "InstantSpell", SPELL.Kick, interruptTarget
             end
         end
-        
-        -- 1. 潜行状态处理 (最高优先级)
-        if stealthed or HasBuff(BUFF.IndiscriminateCarnage) or HasBuff(BUFF.MasterAssassin) then
-            local aType, sID = AssassinationStealthed()
-            if sID then return aType, sID end
+
+        --==========================================================
+        -- 冷却技能 (cooldowns)
+        --==========================================================
+
+        -- 1. 死亡印记: 绞喉&割裂在目标上 且 弑君CD<=2 且 有毒伤buff
+        if hasGarrote and hasRupture and kingsbaneCD <= 2 and hasEnvenomBuff
+            and IsReady(SPELL.Deathmark) and not ShouldSkipSpell(SPELL.Deathmark) then
+            return "spell", SPELL.Deathmark
         end
-        
-        -- 2. 冷却技能管理
-        local cdSpell = AssassinationCooldowns()
-        if cdSpell then 
-            return "spell", cdSpell 
+
+        -- 2. 饰品/药水/种族: 弑君debuff在目标上 (爆发模式)
+        if NCF.burstModeEnabled and HasDebuff(DEBUFF.Kingsbane, "target") then
+            NCF.UseTrinket()
+            if NCF.enablePotion then
+                NCF.UseCombatPotion()
+            end
+            local racialSpell = NCF.GetRacialSpell()
+            if racialSpell and IsReady(racialSpell) then
+                return "spell", racialSpell
+            end
         end
-        
-        -- 3. 核心 DoT 维护 (当前目标)
-        local dotSpell = AssassinationCoreDot(cp, effectiveSpendCP, regenSaturated)
-        if dotSpell then 
-            return "spell", dotSpell 
+
+        -- 3. 弑君: 绞喉&割裂在目标上 且 (死亡印记在目标上 或 死亡印记CD>52)
+        if hasGarrote and hasRupture and (hasDeathmark or deathmarkCD > 52)
+            and IsReady(SPELL.Kingsbane) and not ShouldSkipSpell(SPELL.Kingsbane) then
+            return "spell", SPELL.Kingsbane
         end
-        
-        -- 4. AOE DoT 传染 (猩红风暴) - 有目标缺少DoT时使用
-        local aoeSpell = AssassinationAoEDot(enemyCount)
-        if aoeSpell then
-            return "spell", aoeSpell
+
+        -- 4/5. 消失: 非潜行 且 有强化绞喉天赋
+        if not IsStealthed() and HasTalent(TALENT.ImprovedGarrote) then
+            -- 单体: 死亡印记未就绪 (维护强化绞喉到下个爆发窗口)
+            if singleTarget and not IsReady(SPELL.Deathmark)
+                and IsReady(SPELL.Vanish) and not ShouldSkipSpell(SPELL.Vanish) then
+                return "spell", SPELL.Vanish
+            end
+            -- AOE: 多目标传播强化绞喉
+            if not singleTarget
+                and IsReady(SPELL.Vanish) and not ShouldSkipSpell(SPELL.Vanish) then
+                return "spell", SPELL.Vanish
+            end
         end
-        
-        -- 5. 直接伤害技能 (传入 enemyCount 用于AOE判断)
-        local directSpell = AssassinationDirect(cp, cpDeficit, effectiveSpendCP, notPooling, singleTarget, cdSoon, enemyCount)
-        if directSpell then 
-            return "spell", directSpell 
+
+        --==========================================================
+        -- 蓟茶: 能量<50% 且 战斗即将结束 (TTD<10)
+        --==========================================================
+        if GetEnergyPct() < 50 and NCF.GetMaxTTD() < 10
+            and IsReady(SPELL.ThistleTea) and not ShouldSkipSpell(SPELL.ThistleTea) then
+            return "spell", SPELL.ThistleTea
         end
-        
-        return nil, nil
+
+        --==========================================================
+        -- 核心 DoT 维护
+        --==========================================================
+
+        -- 1. 绞喉 (强化): 有强化绞喉buff或潜行
+        --    宽松阈值: 14 + 6*锋线 + 4*多目标 (基本上总是重新打)
+        if (hasImprovedGarrote or IsStealthed()) and not ShouldSkipSpell(SPELL.Garrote) then
+            local improvedThreshold = 14 + (HasTalent(TALENT.RazorWire) and 6 or 0) + (singleTarget and 0 or 4)
+            if garroteRemain <= improvedThreshold then
+                return "spell", SPELL.Garrote
+            end
+        end
+
+        -- 2. 绞喉 (普通): 连击点缺口>=1 且 可刷新 且 TTD>12
+        if cpDeficit >= 1 and garroteRemain < garroteRefresh
+            and NCF.GetMaxTTD() > 12
+            and not ShouldSkipSpell(SPELL.Garrote) then
+            return "spell", SPELL.Garrote
+        end
+
+        -- 3. 割裂: 连击点>=5 且 可刷新 且 TTD>12 且 (无至暗之夜 或 割裂未激活)
+        if cp >= 5 and ruptureRemain < ruptureRefresh
+            and NCF.GetMaxTTD() > 12
+            and (not hasDarkestNight or not hasRupture)
+            and not ShouldSkipSpell(SPELL.Rupture) then
+            return "spell", SPELL.Rupture
+        end
+
+        --==========================================================
+        -- 攒连击点 (generate)
+        --==========================================================
+        -- 条件: 连击点未满 或 (猩红风暴天赋 且 敌人>=5 且 DoT未铺满)
+        local needGenerate = (not hasDarkestNight and cp < 5) or (hasDarkestNight and cpDeficit > 0)
+        local needSpreadDots = HasTalent(TALENT.CrimsonTempest) and enemyCount >= 5
+            and (NCF.GetEnemyWithoutDebuff(DEBUFF.Garrote, 10, false) or NCF.GetEnemyWithoutDebuff(DEBUFF.Rupture, 10, false))
+
+        if needGenerate or needSpreadDots then
+            -- 1. 猩红风暴: 多目标 且 有目标缺少DoT
+            if not singleTarget
+                and (NCF.GetEnemyWithoutDebuff(DEBUFF.Garrote, 10, false) or NCF.GetEnemyWithoutDebuff(DEBUFF.Rupture, 10, false))
+                and IsReady(SPELL.CrimsonTempest) and not ShouldSkipSpell(SPELL.CrimsonTempest) then
+                return "spell", SPELL.CrimsonTempest
+            end
+
+            -- 2. 毒刃: 至暗之夜buff 且 连击点缺口=1 且 敌人<=3 且 有剧毒短刺天赋
+            if hasDarkestNight and cpDeficit == 1 and enemyCount <= 3
+                and HasTalent(TALENT.ToxicStiletto)
+                and IsReady(SPELL.Shiv) and not ShouldSkipSpell(SPELL.Shiv) then
+                return "spell", SPELL.Shiv
+            end
+
+            -- 3. 伏击: 敌人<=1+盲区天赋 且 (潜行 或 有盲区buff)
+            if enemyCount <= 1 + blindsideValue
+                and (IsStealthed() or HasBuff(BUFF.Blindside, "player"))
+                and IsReady(SPELL.Ambush) and not ShouldSkipSpell(SPELL.Ambush) then
+                return "spell", SPELL.Ambush
+            end
+
+            -- 4. 毁伤: 敌人<=1+盲区天赋
+            if enemyCount <= 1 + blindsideValue
+                and IsReady(SPELL.Mutilate) and not ShouldSkipSpell(SPELL.Mutilate) then
+                return "spell", SPELL.Mutilate
+            end
+
+            -- 5. 刀扇: 敌人>1+盲区天赋
+            if enemyCount > 1 + blindsideValue
+                and IsReady(SPELL.FanOfKnives) and not ShouldSkipSpell(SPELL.FanOfKnives) then
+                return "spell", SPELL.FanOfKnives
+            end
+        end
+
+        --==========================================================
+        -- 花连击点 (spend)
+        --==========================================================
+        -- 条件: 连击点已满
+        local canSpend = (not hasDarkestNight and cp >= 5) or (hasDarkestNight and cpDeficit == 0)
+
+        if canSpend then
+            -- 1. 毒伤: 无情猎手层数<4
+            if implacableStacks < 4
+                and IsReady(SPELL.Envenom) and not ShouldSkipSpell(SPELL.Envenom) then
+                return "spell", SPELL.Envenom
+            end
+
+            -- 2. 毒伤: 能量>70%
+            if GetEnergyPct() > 70
+                and IsReady(SPELL.Envenom) and not ShouldSkipSpell(SPELL.Envenom) then
+                return "spell", SPELL.Envenom
+            end
+        end
+
+        return nil
     end
 
-    -- 返回主循环函数
     return Rotation
 end
 

@@ -116,8 +116,8 @@ local function CreateDevastationRotation()
             if NCF.enablePotion then NCF.UseCombatPotion() end
         end
         
-        -- Combat check
-        if not UnitAffectingCombat("player") and not (UnitExists("target") and UnitAffectingCombat("target")) then
+        -- Combat check (自己/目标/队友任一在战斗中)
+        if not NCF.IsInCombat() then
             return "spell", 61304
         end
         

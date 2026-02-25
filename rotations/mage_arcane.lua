@@ -12,9 +12,10 @@
 ===================================
 Cooldowns (shared)
 ===================================
-0. Arcane Orb: opener phase AND Orb Mastery (combatTime < 5)
-1. Arcane Missiles: opener phase AND Spellfire Spheres talent
-2. Arcane Blast: Splintering AND salvo < 20 AND (opener OR Orb Mastery surge prep)
+0. Arcane Orb: opener phase AND Splintering (any Spellslinger build)
+1. Arcane Missiles: opener phase AND Spellfire Spheres AND Clearcasting
+2. Arcane Pulse: Splintering AND salvo < 20 AND (opener OR Orb Mastery surge prep) — preferred builder
+2b. Arcane Blast: same condition, fallback when no Pulse talent
 3. Touch of the Magi: complex conditions
 4. Arcane Surge: on CD
 5. Evocation: mana < 10% AND no surge AND no touch debuff AND surge CD > 10
@@ -23,11 +24,11 @@ Cooldowns (shared)
 Spellslinger + Orb Mastery Branch
 ===================================
 1. Arcane Orb: after Barrage with CC to recoup charges, or in AOE
-2. Arcane Barrage: salvo >= 20 (or 18+ with Orb Barrage), hold for CDs
+2. Arcane Barrage: salvo >= 20 hold for CDs (relaxed 2+ enemies), or end of Surge/Touch with salvo >= 15
 3. Arcane Missiles: with HV or OPM, salvo <= threshold, not after Orb
 4. Presence of Mind: charges < 2, no CC or no HV, not after Orb/Missiles
 5. Arcane Blast: if Presence of Mind up
-6. Arcane Pulse: enemies > 3
+6. Arcane Pulse: charge builder (charges < 4) or AOE (enemies >= 2)
 7. Arcane Blast: filler
 8. Arcane Barrage: filler
 
@@ -35,12 +36,12 @@ Spellslinger + Orb Mastery Branch
 Spellslinger (no Orb Mastery) Branch
 ===================================
 1. Arcane Orb: charges < 3 (or < 4 with 2+ enemies), need charges
-2. Arcane Barrage: salvo >= 20, hold for CDs
+2. Arcane Barrage: salvo >= 20, hold for CDs (relaxed 2+ enemies)
 3. Arcane Barrage: AOE with CC + OPM + HV
 4. Arcane Missiles: for charges with HV and salvo stacks
 5. Presence of Mind: charges < 2, conditions
 6. Arcane Blast: if Presence of Mind up
-7. Arcane Pulse: enemies > 3
+7. Arcane Pulse: charge builder (charges < 4) or AOE (enemies >= 2)
 8. Arcane Blast: filler
 9. Arcane Barrage: filler
 
@@ -49,10 +50,10 @@ Sunfury Branch
 ===================================
 Variable: sunfury_hold_for_cds - pooling logic for Touch/Surge/Soul
 
-1. Arcane Barrage: complex conditions with hold_for_cds, or Soul buff, or Touch timing
+1. Arcane Barrage: salvo spend at 6-7/12-13/18-19 (Meteorite optimization), or Soul/Touch timing, or 25 cap
 2. Arcane Missiles: CC with salvo threshold, Touch+Surge combo
 3. Arcane Orb: charges < 2
-4. Arcane Pulse: enemies > 3
+4. Arcane Pulse: charge builder (charges < 4) or AOE (enemies >= 2)
 5. Arcane Explosion: enemies > 3, charges < 2, no Impetus
 6. Arcane Blast: filler
 7. Arcane Barrage: filler
@@ -62,26 +63,26 @@ Variable: sunfury_hold_for_cds - pooling logic for Touch/Surge/Soul
 -- 1. Register Spells
 --============================================================
 NCF.RegisterSpells("MAGE", 1, {
-    -- Cooldown spells
-    { id = 365350, name = "Arcane Surge", default = "burst" },
-    { id = 321507, name = "Touch of the Magi", default = "burst" },
-    { id = 12051, name = "Evocation", default = "normal" },
-    { id = 205025, name = "Presence of Mind", default = "normal" },
-    
-    -- Normal spells
-    { id = 5143, name = "Arcane Missiles", default = "normal" },
-    { id = 153626, name = "Arcane Orb", default = "normal" },
-    { id = 44425, name = "Arcane Barrage", default = "normal" },
-    { id = 30451, name = "Arcane Blast", default = "normal" },
-    { id = 1449, name = "Arcane Explosion", default = "normal" },
-    { id = 1241462, name = "Arcane Pulse", default = "normal" },
-    { id = 2139, name = "Counterspell", default = "normal" },
-    { id = 1459, name = "Arcane Intellect", default = "normal" },
-    
-    -- Defensive spells
-    { id = 235450, name = "Prismatic Barrier", default = "normal" },
-    { id = 414658, name = "Ice Block", default = "normal" },
-    { id = 475, name = "Remove Curse", default = "normal" },
+    -- 爆发技能
+    { id = 365350, name = "奥术涌动", default = "burst" },
+    { id = 321507, name = "法师之触", default = "burst" },
+    { id = 12051, name = "唤醒", default = "normal" },
+    { id = 205025, name = "气定神闲", default = "normal" },
+
+    -- 常规技能
+    { id = 5143, name = "奥术飞弹", default = "normal" },
+    { id = 153626, name = "奥术宝珠", default = "normal" },
+    { id = 44425, name = "奥术弹幕", default = "normal" },
+    { id = 30451, name = "奥术冲击", default = "normal" },
+    { id = 1449, name = "奥术爆炸", default = "normal" },
+    { id = 1241462, name = "奥术脉冲", default = "normal" },
+    { id = 2139, name = "法术反制", default = "normal" },
+    { id = 1459, name = "奥术智慧", default = "normal" },
+
+    -- 防御技能
+    { id = 235450, name = "棱光护盾", default = "normal" },
+    { id = 414658, name = "寒冰屏障", default = "normal" },
+    { id = 475, name = "解除诅咒", default = "normal" },
 })
 
 --============================================================
@@ -295,9 +296,8 @@ local function CreateArcaneRotation()
             return "spell", SPELL.ArcaneIntellect
         end
         
-        -- Combat check
-        local targetInCombat = UnitExists("target") and UnitAffectingCombat("target")
-        if not UnitAffectingCombat("player") and not targetInCombat then 
+        -- Combat check (自己/目标/队友任一在战斗中)
+        if not NCF.IsInCombat() then
             return "spell", 61304
         end
         
@@ -317,8 +317,8 @@ local function CreateArcaneRotation()
         -- Cooldowns
         --==========================================================
         
-        -- 0. Opener Orb: Orb Mastery builds cast Orb right after first Blast
-        if isOpener and hasSplintering and hasOrbMastery and IsReady(SPELL.ArcaneOrb) and not ShouldSkipSpell(SPELL.ArcaneOrb) then
+        -- 0. Opener Orb: Spellslinger builds cast Orb on pull
+        if isOpener and hasSplintering and IsReady(SPELL.ArcaneOrb) and not ShouldSkipSpell(SPELL.ArcaneOrb) then
             return "spell", SPELL.ArcaneOrb
         end
         
@@ -327,9 +327,14 @@ local function CreateArcaneRotation()
             return "spell", SPELL.ArcaneMissiles
         end
         
-        -- 2. Arcane Blast: Splintering AND salvo < 20 AND (opener OR Orb Mastery surge prep)
-        local blastBuilderCondition = hasSplintering and arcaneSalvoStacks < 20 and (isOpener or (hasOrbMastery and arcaneSurgeCD < gcd_max * (manaPct / 16)))
-        if blastBuilderCondition and IsReady(SPELL.ArcaneBlast) and not ShouldSkipSpell(SPELL.ArcaneBlast) then
+        -- 2. Arcane Pulse: Splintering AND salvo < 20 AND (opener OR Orb Mastery surge prep) — preferred over Blast
+        local builderCondition = hasSplintering and arcaneSalvoStacks < 20 and (isOpener or (hasOrbMastery and arcaneSurgeCD < gcd_max * (manaPct / 16)))
+        if builderCondition and HasTalent(TALENT.ArcanePulse) and IsReady(SPELL.ArcanePulse) and not ShouldSkipSpell(SPELL.ArcanePulse) then
+            return "spell", SPELL.ArcanePulse
+        end
+
+        -- 2b. Arcane Blast: same condition, fallback when no Pulse talent
+        if builderCondition and IsReady(SPELL.ArcaneBlast) and not ShouldSkipSpell(SPELL.ArcaneBlast) then
             return "spell", SPELL.ArcaneBlast
         end
         
@@ -372,10 +377,11 @@ local function CreateArcaneRotation()
                 return "spell", SPELL.ArcaneOrb
             end
             
-            -- 2. Arcane Barrage: salvo >= 20 (or 18+ with Orb Barrage), hold for CDs
-            local barrageCondition = (arcaneCharges == 4 or hasOrbBarrage) and arcaneSalvoStacks >= 20 and touchCD > gcd_max * 4
-            -- Also barrage at end of Surge with salvo >= 10
-            barrageCondition = barrageCondition or (arcaneSurgeRemain < gcd_max and hasArcaneSurge and arcaneSalvoStacks >= 10)
+            -- 2. Arcane Barrage: salvo >= 20, hold for CDs (relaxed with 2+ enemies)
+            local touchPoolGCDs = enemyCount >= 2 and 2 or 4
+            local barrageCondition = (arcaneCharges == 4 or hasOrbBarrage) and arcaneSalvoStacks >= 20 and touchCD > gcd_max * touchPoolGCDs
+            -- Also barrage at end of Surge or Touch with salvo >= 15
+            barrageCondition = barrageCondition or ((arcaneSurgeRemain < gcd_max and hasArcaneSurge) or (touchDebuffRemain < gcd_max and hasTouchDebuff)) and arcaneSalvoStacks >= 15
             if barrageCondition and IsReady(SPELL.ArcaneBarrage) and not ShouldSkipSpell(SPELL.ArcaneBarrage) then
                 return "spell", SPELL.ArcaneBarrage
             end
@@ -400,24 +406,24 @@ local function CreateArcaneRotation()
                 return "spell", SPELL.ArcaneBlast
             end
             
-            -- 6. Arcane Pulse: enemies > 3
-            if HasTalent(TALENT.ArcanePulse) and enemyCount > 3 and IsReady(SPELL.ArcanePulse) and not ShouldSkipSpell(SPELL.ArcanePulse) then
+            -- 6. Arcane Pulse: charge builder or AOE filler
+            if HasTalent(TALENT.ArcanePulse) and (arcaneCharges < 4 or enemyCount >= 2) and IsReady(SPELL.ArcanePulse) and not ShouldSkipSpell(SPELL.ArcanePulse) then
                 return "spell", SPELL.ArcanePulse
             end
-            
+
             -- 7. Arcane Blast: filler
             if IsReady(SPELL.ArcaneBlast) and not ShouldSkipSpell(SPELL.ArcaneBlast) then
                 return "spell", SPELL.ArcaneBlast
             end
-            
+
             -- 8. Arcane Barrage: filler
             if IsReady(SPELL.ArcaneBarrage) and not ShouldSkipSpell(SPELL.ArcaneBarrage) then
                 return "spell", SPELL.ArcaneBarrage
             end
-            
+
             return nil
         end
-        
+
         --==========================================================
         -- Spellslinger (no Orb Mastery) Branch
         --==========================================================
@@ -432,8 +438,9 @@ local function CreateArcaneRotation()
                 return "spell", SPELL.ArcaneOrb
             end
             
-            -- 2. Arcane Barrage: salvo >= 20, hold for CDs
-            if arcaneSalvoStacks >= 20 and (arcaneCharges == 4 or hasOrbBarrage) and touchCD > gcd_max * 4 and IsReady(SPELL.ArcaneBarrage) and not ShouldSkipSpell(SPELL.ArcaneBarrage) then
+            -- 2. Arcane Barrage: salvo >= 20, hold for CDs (relaxed with 2+ enemies)
+            local touchPoolGCDs = enemyCount >= 2 and 2 or 4
+            if arcaneSalvoStacks >= 20 and (arcaneCharges == 4 or hasOrbBarrage) and touchCD > gcd_max * touchPoolGCDs and IsReady(SPELL.ArcaneBarrage) and not ShouldSkipSpell(SPELL.ArcaneBarrage) then
                 return "spell", SPELL.ArcaneBarrage
             end
             
@@ -460,24 +467,24 @@ local function CreateArcaneRotation()
                 return "spell", SPELL.ArcaneBlast
             end
             
-            -- 7. Arcane Pulse: enemies > 3
-            if HasTalent(TALENT.ArcanePulse) and enemyCount > 3 and IsReady(SPELL.ArcanePulse) and not ShouldSkipSpell(SPELL.ArcanePulse) then
+            -- 7. Arcane Pulse: charge builder or AOE filler
+            if HasTalent(TALENT.ArcanePulse) and (arcaneCharges < 4 or enemyCount >= 2) and IsReady(SPELL.ArcanePulse) and not ShouldSkipSpell(SPELL.ArcanePulse) then
                 return "spell", SPELL.ArcanePulse
             end
-            
+
             -- 8. Arcane Blast: filler
             if IsReady(SPELL.ArcaneBlast) and not ShouldSkipSpell(SPELL.ArcaneBlast) then
                 return "spell", SPELL.ArcaneBlast
             end
-            
+
             -- 9. Arcane Barrage: filler
             if IsReady(SPELL.ArcaneBarrage) and not ShouldSkipSpell(SPELL.ArcaneBarrage) then
                 return "spell", SPELL.ArcaneBarrage
             end
-            
+
             return nil
         end
-        
+
         --==========================================================
         -- Sunfury Branch
         --==========================================================
@@ -501,13 +508,14 @@ local function CreateArcaneRotation()
                 barrageCondition = true
             end
             
-            -- Salvo spending with hold_for_cds check
+            -- Salvo spending with hold_for_cds check (increments of 6 for Meteorite optimization)
             if arcaneCharges == 4 and sunfury_hold_for_cds then
                 local canRecover = (hasClearcasting and hasHighVoltage) or (orbCharges > 0.95 and enemyCount >= 3)
-                -- Spend at 0-7, 10-12, 15-17 salvo ranges, or at 25
-                local inSpendRange = (arcaneSalvoStacks >= 0 and arcaneSalvoStacks < 7) or 
-                                     (arcaneSalvoStacks >= 10 and arcaneSalvoStacks < 12) or 
-                                     (arcaneSalvoStacks >= 15 and arcaneSalvoStacks < 17)
+                -- Spend at precise ranges: 6-7, 12-13, 18-19 (or <19 in AOE 3+)
+                local inSpendRange = (arcaneSalvoStacks >= 6 and arcaneSalvoStacks < 7) or
+                                     (arcaneSalvoStacks >= 12 and arcaneSalvoStacks < 13) or
+                                     (arcaneSalvoStacks >= 18 and arcaneSalvoStacks < 19) or
+                                     (arcaneSalvoStacks < 19 and enemyCount >= 3)
                 if (canRecover and inSpendRange) or arcaneSalvoStacks == 25 then
                     barrageCondition = true
                 end
@@ -545,8 +553,8 @@ local function CreateArcaneRotation()
                 return "spell", SPELL.ArcaneOrb
             end
             
-            -- 4. Arcane Pulse: enemies > 3
-            if HasTalent(TALENT.ArcanePulse) and enemyCount > 3 and IsReady(SPELL.ArcanePulse) and not ShouldSkipSpell(SPELL.ArcanePulse) then
+            -- 4. Arcane Pulse: charge builder or AOE filler
+            if HasTalent(TALENT.ArcanePulse) and (arcaneCharges < 4 or enemyCount >= 2) and IsReady(SPELL.ArcanePulse) and not ShouldSkipSpell(SPELL.ArcanePulse) then
                 return "spell", SPELL.ArcanePulse
             end
             

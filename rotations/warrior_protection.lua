@@ -323,9 +323,8 @@ local function CreateProtectionRotation()
             end
         end
         
-        -- 战斗检测
-        local targetInCombat = UnitExists("target") and UnitAffectingCombat("target")
-        if not UnitAffectingCombat("player") and not targetInCombat then 
+        -- 战斗检测 (自己/目标/队友任一在战斗中)
+        if not NCF.IsInCombat() then
             return "spell", 61304
         end
         --============================================================

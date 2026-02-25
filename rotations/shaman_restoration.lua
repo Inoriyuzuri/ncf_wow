@@ -204,9 +204,8 @@ local function CreateRestorationRotation()
             return "spell", SPELL.Windfury
         end
 		
-		-- 以下需要战斗中才执行 (自己战斗中 或 目标在战斗中)
-		local targetInCombat = UnitExists("target") and UnitAffectingCombat("target")
-		if not UnitAffectingCombat("player") and not targetInCombat then 
+		-- 以下需要战斗中才执行 (自己/目标/队友任一在战斗中)
+		if not NCF.IsInCombat() then
 			return 'spell', 61304
 		end
         --========================================
@@ -265,7 +264,7 @@ local function CreateRestorationRotation()
 
         -- 9. 治疗之雨: 需要天赋 且 自己没有buff
         if HasTalent(TALENT.HealingRain) and not HasBuff(BUFF.HealingRain, "player") and IsReady(SPELL.HealingRain) and not ShouldSkipSpell(SPELL.HealingRain) then
-            return "spell", SPELL.HealingRain
+            return "cast_ground_spell_to_tank", SPELL.HealingRain
         end
 
         -- 10. 升腾: 团队血量 < 45%

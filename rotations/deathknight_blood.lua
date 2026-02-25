@@ -310,8 +310,8 @@ local function CreateBloodRotation()
             return "spell", SPELL.IceboundFortitude
         end
         
-        -- 非战斗状态不继续
-        if not UnitAffectingCombat("player") then
+        -- 非战斗状态不继续 (自己/目标/队友任一在战斗中)
+        if not NCF.IsInCombat() then
             return nil
         end
         

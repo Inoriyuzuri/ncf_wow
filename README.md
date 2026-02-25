@@ -1,6 +1,6 @@
 # NCF 使用指南
 
-魔兽世界技能循环辅助插件，支持多职业多专精。
+NCF 是一个魔兽世界技能循环辅助插件，支持多职业多专精，帮助玩家优化输出/治疗/坦克循环。
 
 ---
 
@@ -14,33 +14,22 @@
 - [宏命令](#宏命令)
 - [插入宏](#插入宏-ncfinsert)
 - [猎人前跳宏](#猎人前跳宏-ncfdisengage)
-- [快捷键](#快捷键)
-- [支持的职业专精](#支持的职业专精)
+- [快捷键设置](#快捷键设置)
+- [职业专精支持](#职业专精支持)
 - [常见问题](#常见问题)
 - [编写自定义循环](#编写自定义循环)
-  - [文件命名](#文件命名)
-  - [文件结构](#文件结构)
-  - [完整模板](#完整模板)
-  - [返回值 (actionType)](#返回值-actiontype)
+  - [文件命名](#文件命名规则)
+  - [完整模板](#完整循环模板)
   - [编写规则](#编写规则)
-- [API 参考](#api-参考)
-  - [Buff / Debuff](#buff--debuff)
-  - [技能冷却与充能](#技能冷却与充能)
-  - [资源](#资源)
-  - [血量](#血量)
-  - [敌人检测](#敌人检测)
-  - [打断](#打断)
-  - [位置与朝向](#位置与朝向)
-  - [战斗状态](#战斗状态)
-  - [TTD (目标存活时间)](#ttd-目标存活时间)
-  - [模式判断](#模式判断)
-  - [治疗辅助](#治疗辅助)
-  - [饰品与药水](#饰品与药水)
-- [调试技巧](#调试技巧)
+  - [返回值 (actionType)](#返回值-actiontype)
+  - [API 参考](#api-参考)
+  - [调试工具](#调试工具)
 
 ---
 
 ## 安装
+
+### 文件结构
 
 ```
 nn/
@@ -48,87 +37,138 @@ nn/
     ├── _ncf.nn           # 核心文件
     ├── ncf_ui.nn         # UI 界面
     ├── ncf_helper.nn     # 辅助函数
+    ├── adapters/         # 解锁器适配层
+    │   └── nn.lua        # Nn 适配器
     └── rotations/        # 循环文件夹
         ├── mage_arcane.lua
         ├── warrior_fury.lua
         └── ...
 ```
 
-1. 将核心文件放入 `nn/scripts/` 目录
-2. 将循环文件 (`.lua`) 放入 `nn/scripts/rotations/` 目录
-3. `/reload` 重载界面
+### 安装步骤
+
+1. 将核心文件 (`_ncf.nn`, `ncf_ui.nn`, `ncf_helper.nn`) 放入 `nn/scripts/` 目录
+2. 将职业循环文件 (`.lua`) 放入 `nn/scripts/rotations/` 目录
+3. 重载界面 `/reload`
 
 ---
 
 ## 基本使用
 
-| 操作 | 默认快捷键 | 宏命令 |
-|------|-----------|--------|
-| 开关循环 | F1 | `/run NCFswitch()` |
-| 切换爆发/划水 | F2 | `/run NCFburst()` |
-| 打开设置 | — | `/run NCFsettings()` |
+1. 进入游戏后 NCF 自动加载
+2. 按 **F1** (默认) 开启/关闭循环
+3. 按 **F2** (默认) 切换爆发/划水模式
+4. 选中目标后自动建议技能
 
-**爆发模式**: 使用所有大技能 (金色标记)
-**划水模式**: 跳过爆发技能，只用普通技能
+> 按住 Alt、Shift 或 Ctrl 时循环暂停，松开后恢复。骑乘状态下也会暂停。
 
 ---
 
 ## 悬浮面板
 
-屏幕上方的浮动面板，从左到右:
+悬浮面板显示在屏幕上方，可拖动调整位置。
+
+### 面板组件
 
 | 组件 | 功能 |
 |------|------|
-| 推荐技能图标 | 当前建议释放的技能，暂停时显示红色 X，脱战显示「未进战」 |
-| TTD 面板 | 目标预估存活时间 (绿≥60s, 黄≥45s, 橙≥20s, 红<20s) |
-| 禁用技能面板 | 当前被禁用/爆发跳过的技能图标 |
-| 状态栏 | 开启/暂停 - 爆发/划水 - 敌人数量 |
+| **推荐技能图标** | 当前建议释放的技能。暂停时红色 X，未进战显示「未进战」 |
+| **TTD 面板** | 目标预估存活时间。绿色(≥60s) 黄色(≥45s) 橙色(≥20s) 红色(<20s) |
+| **禁用技能面板** | 被禁用或爆发跳过的技能图标列表 |
+| **状态栏** | 格式: `已开启-爆发 敌人:5` |
 
-所有组件可在设置面板中单独开关，面板可拖动，位置自动保存。
+### 状态栏颜色
+
+| 状态 | 颜色 | 说明 |
+|------|------|------|
+| 已开启 | 绿色 | 循环正在运行 |
+| 已暂停 | 红色 | 循环已停止 |
+| 爆发 | 金色 | 使用大技能 |
+| 划水 | 绿色 | 不使用爆发技能 |
+
+在设置面板中可单独开关每个组件。
 
 ---
 
 ## 设置面板
 
-`/run NCFsettings()` 打开。
+使用 `/run NCFsettings()` 或点击宏「设置」打开。
 
 | 设置项 | 说明 |
 |--------|------|
-| **开启快捷键** | 绑定循环开关按键 |
-| **爆发快捷键** | 绑定爆发/划水切换按键 |
-| **打断设置** | 0=立即打断；≤1=读条完成百分比(如0.9=90%时打断)；>1=剩余秒数 |
-| **自动索敌** | 自动切换最优目标，可设检查距离/身前/自定义范围 |
-| **自动喝药** | 血量≤阈值时自动使用治疗药水/治疗石 (默认35%，0=关闭) |
-| **面板显示** | 单独开关状态栏/推荐技能/TTD/禁用显示 |
+| 开启快捷键 | 循环开关按键 (默认 F1) |
+| 爆发/划水切换 | 爆发模式切换按键 (默认 F2) |
+
+### 打断设置
+
+| 值 | 行为 |
+|----|------|
+| `0` | 立即打断 |
+| `0.1` ~ `1.0` | 读条完成该百分比时打断 (如 `0.9` = 完成 90% 时) |
+| `> 1` | 读条剩余该秒数时打断 (如 `2` = 剩余 2 秒时) |
+
+> 打断有随机偏移: 百分比模式 ±5%，秒数模式 ±0.3秒。引导技能不受延迟影响，立即打断。
+
+### 自动索敌
+
+| 设置项 | 说明 |
+|--------|------|
+| 启用自动索敌 | 战斗中自动切换到最优目标 (血量最高) |
+| 检查距离 | 目标超出范围时切换 |
+| 检查身前 | 目标在身后时优先切换到身前目标 |
+| 自定义范围 | 留空 = 根据职业自动判断 (近战5码/远程40码) |
+
+> 治疗专精不会自动索敌。
+
+### 自动喝药
+
+| 设置项 | 默认值 | 说明 |
+|--------|--------|------|
+| 治疗药水阈值 | 35% | 血量低于此值时自动使用治疗药水 |
+| 治疗石阈值 | 35% | 血量低于此值时自动使用治疗石 |
+| 战斗药水 | 开启 | 爆发时是否自动使用增强药水 |
+
+设为 `0` 关闭对应功能。
 
 ---
 
 ## 技能模式设置
 
-每个技能有三种模式:
+在设置面板中点击「技能模式设置」打开。
 
-| 模式 | 颜色 | 效果 |
-|------|------|------|
-| 正常 (normal) | 绿色 | 始终使用 |
-| 爆发 (burst) | 橙色 | 仅爆发模式下使用 |
-| 禁用 (disabled) | 红色 | 永不使用 |
+### 三种模式
 
-每个技能还可以设置:
-- **快捷键**: 左键绑定，右键清除，按下切换禁用/启用
-- **TTD 保护**: 目标存活时间低于设定值时不使用该技能 (0=关闭)
+| 模式 | 边框颜色 | 行为 |
+|------|----------|------|
+| 正常 (normal) | 绿色 | 正常使用 |
+| 爆发 (burst) | 橙色 | 仅在爆发模式下使用 |
+| 禁用 (disabled) | 红色 | 永远不使用 |
+
+### TTD 保护
+
+对爆发技能设置最低 TTD (秒)。敌人存活时间低于此值时不使用该技能。设为 `0` 关闭。
+
+### 每技能快捷键
+
+- **左键**: 设置快捷键
+- **右键**: 清除快捷键
+- **按下快捷键**: 实时切换禁用/启用
 
 ---
 
 ## 宏命令
 
-| 宏 | 命令 | 功能 |
-|----|------|------|
+| 宏名称 | 命令 | 功能 |
+|--------|------|------|
 | NCF | `/run NCFswitch()` | 开关循环 |
-| NCF爆发 | `/run NCFburst()` | 切换爆发/划水 |
+| NCF爆发 | `/run NCFburst()` | 切换爆发/划水模式 |
 | NCF智能 | `/run NCFsmart()` | 切换智能目标 |
 | 设置 | `/run NCFsettings()` | 打开设置面板 |
-| 显示Buff | `/run NCFbuffs()` | 显示玩家 Buff 列表 |
-| 显示Debuff | `/run NCFdebuffs()` | 显示目标 Debuff 列表 |
+| 显示Buff | `/run NCFbuffs()` | 打印玩家当前所有 Buff 及 ID |
+| 显示Debuff | `/run NCFdebuffs()` | 打印目标当前所有 Debuff 及 ID |
+| NCF插入 | `/run NCFInsert(技能ID)` | 插入技能到优先队列 |
+| NCF队列 | `/run NCFQueue()` | 显示当前插入队列 |
+| LR前跳 | `/run NCFDisengage()` | 猎人前跳宏 |
 
 ---
 
@@ -137,20 +177,23 @@ nn/
 在循环中插入自定义技能，优先级高于循环建议。
 
 ```
-/run NCFInsert(2825)       -- 按技能ID插入
-/run NCFInsert("英勇气概")  -- 按技能名插入
-/run NCFQueue()             -- 查看当前队列
+/run NCFInsert(2825)         -- 按技能ID
+/run NCFInsert("英勇气概")    -- 按技能名
 ```
 
-- 技能必须已就绪
+显示队列: `/run NCFQueue()`
+
+- 技能必须已就绪 (不在 CD 中)
+- 插入后屏幕左侧显示完整队列 (3秒后自动淡出)
+- 施放成功后自动刷新显示
+- 施放前自动检查资源是否足够 (能量/法力/怒气等)，不够时跳过等待
 - 脱战后队列自动清空
-- 施放成功后自动移除
 
 ---
 
 ## 猎人前跳宏 (NCFDisengage)
 
-猎人专用，实现向前跳跃 (自动转身→脱离→转回)。
+猎人专用，记录朝向 → 转身180° → 脱离 → 转回。
 
 ```
 #showtooltip 脱离
@@ -159,22 +202,22 @@ nn/
 
 ---
 
-## 快捷键
-
-支持的格式:
+## 快捷键设置
 
 | 类型 | 示例 |
 |------|------|
-| 单个按键 | `F1`, `1`, `X` |
+| 单个按键 | `F1`, `1`, `X`, `G` |
 | 组合键 | `CTRL-1`, `SHIFT-F`, `ALT-X` |
-| 鼠标 | `BUTTON3`(中键), `BUTTON4`, `BUTTON5` |
-| 滚轮 | `MOUSEWHEELUP`, `MOUSEWHEELDOWN` |
+| 多修饰键 | `CTRL-SHIFT-1`, `CTRL-ALT-F` |
+| 鼠标按键 | `BUTTON3` (中键), `BUTTON4`, `BUTTON5` |
+| 鼠标滚轮 | `MOUSEWHEELUP`, `MOUSEWHEELDOWN` |
+| 鼠标组合 | `CTRL-BUTTON4`, `SHIFT-BUTTON5` |
 
-设置方法: 左键点击按钮 → 按下按键 → ESC取消 → 右键清除
+左键设置 → 按下绑定 → ESC取消 → 右键清除。
 
 ---
 
-## 支持的职业专精
+## 职业专精支持
 
 | 职业 | 专精 |
 |------|------|
@@ -192,36 +235,37 @@ nn/
 | 术士 | 恶魔 |
 | 战士 | 武器、狂怒、防护 |
 
+
 ---
 
 ## 常见问题
 
 **Q: 没有显示技能提示？**
-确认: 循环已开启 (状态栏「已开启」) → 有可攻击目标 → `rotations/` 下有对应文件
+1. 确保循环已开启 (状态栏「已开启」)
+2. 确保有可攻击的目标
+3. 确保 `rotations/` 中有对应专精的 `.lua` 文件
 
-**Q: 某个技能不想自动使用？**
-技能模式设置中切换到红色 (禁用)
+**Q: 某个技能不想用？**
+技能模式设置中切换为红色 (禁用)。
 
-**Q: 爆发技能没有触发？**
-确认: 爆发模式已开启 → 技能非红色禁用 → 检查 TTD 保护设置
+**Q: 爆发技能没有自动使用？**
+1. 状态栏是否显示「爆发」
+2. 该技能是否红色禁用
+3. TTD 保护是否阻止 (Boss 血太低)
 
 **Q: 打断时机不对？**
-调整打断设置: 数值越大打断越早，越小越晚，0=立即
+调整打断设置数值。越大越早，越小越晚，`0` 立即打断。
 
-**Q: 如何强制使用技能？**
-`/run NCFInsert(技能ID)` — 在 [Wowhead](https://www.wowhead.com) 搜索技能名获取 ID
-
----
-
-# 编写自定义循环
-
-以下内容面向想编写自己循环文件的开发者。
+**Q: 如何强制使用某个技能？**
+`/run NCFInsert(技能ID)` — 技能ID 可在 Wowhead 查询。
 
 ---
 
-## 文件命名
+## 编写自定义循环
 
-格式: `职业_专精.lua` (全小写英文)
+### 文件命名规则
+
+格式: `职业_专精.lua` (全小写英文)，放入 `rotations/` 后 `/reload`。
 
 | 职业 | 专精1 | 专精2 | 专精3 | 专精4 |
 |------|-------|-------|-------|-------|
@@ -239,77 +283,65 @@ nn/
 | DEMONHUNTER | demonhunter_havoc | demonhunter_vengeance | demonhunter_void | — |
 | EVOKER | evoker_devastation | evoker_preservation | evoker_augmentation | — |
 
-specIndex 对应: 专精1=1, 专精2=2, 专精3=3, 专精4=4
-
 ---
 
-## 文件结构
-
-每个循环文件必须按以下顺序:
-
-```
-1. NCF.RegisterSpells(...)     -- 注册技能列表 (文件顶部)
-2. local SPELL / BUFF / DEBUFF / TALENT = {...}  -- ID 定义
-3. local HasBuff = NCF.HasBuff  -- 局部化函数
-4. local function CreateXxxRotation() ... end     -- 主循环
-5. return CreateXxxRotation()   -- 文件末尾
-```
-
----
-
-## 完整模板
+### 完整循环模板
 
 ```lua
 --============================================================
--- 职业名 专精名 循环
+-- 职业名 专精名 Rotation
+-- Version 1.0
 --============================================================
 
 --============================================================
--- 1. 注册技能 (必须在文件顶部)
---    burst 技能放最前面，技能名使用中文
+-- 1. 注册技能 (必须在文件最顶部)
+--    burst 技能放前面, name 用中文
 --============================================================
 NCF.RegisterSpells("CLASS", specIndex, {
-    { id = 12345, name = "大招", default = "burst" },
-    { id = 11111, name = "主要技能", default = "normal" },
-    { id = 22222, name = "填充技能", default = "normal" },
-    { id = 33333, name = "打断技能", default = "normal" },
+    { id = 12345, name = "爆发技能名", default = "burst" },
+    { id = 11111, name = "主要输出技能", default = "normal" },
+    { id = 22222, name = "填充技能",     default = "normal" },
+    { id = 33333, name = "打断技能",     default = "normal" },
 })
 
 --============================================================
 -- 2. ID 定义
 --============================================================
 local SPELL = {
-    BigCD     = 12345,
-    MainNuke  = 11111,
-    Filler    = 22222,
-    Interrupt = 33333,
+    MainNuke    = 11111,
+    Filler      = 22222,
+    Interrupt   = 33333,
+    BigCooldown = 12345,
 }
 
 local BUFF = {
-    ProcBuff  = 44444,
+    ProcBuff = 44444,
 }
 
 local DEBUFF = {
-    MyDot     = 55555,
+    MyDot = 55555,
 }
 
 local TALENT = {
-    SpecialTalent = 66666,
+    SomeTalent = 66666,
 }
 
 --============================================================
 -- 3. 局部化 Helper 函数
 --============================================================
-local HasBuff               = NCF.HasBuff
-local HasDebuff             = NCF.HasDebuff
-local HasTalent             = NCF.HasTalent
-local GetBuffStacks         = NCF.GetBuffStacks
-local GetDebuffRemain       = NCF.GetDebuffRemain
+local HasBuff                = NCF.HasBuff
+local HasDebuff              = NCF.HasDebuff
+local HasTalent              = NCF.HasTalent
+local GetBuffRemain          = NCF.GetBuffRemain
+local GetBuffStacks          = NCF.GetBuffStacks
+local GetDebuffRemain        = NCF.GetDebuffRemain
 local GetSpellCooldownRemain = NCF.GetSpellCooldownRemain
-local GetSpellCharges       = NCF.GetSpellCharges
-local GetActiveEnemyAmount  = NCF.GetActiveEnemyAmount
-local ShouldSkipSpell       = NCF.ShouldSkipSpell
-local SetEnemyCount         = NCF.SetEnemyCount
+local GetSpellCharges        = NCF.GetSpellCharges
+local GetActiveEnemyAmount   = NCF.GetActiveEnemyAmount
+local GetUnitHealthPct       = NCF.GetUnitHealthPct
+local GetUnitPower           = NCF.GetUnitPower
+local ShouldSkipSpell        = NCF.ShouldSkipSpell
+local SetEnemyCount          = NCF.SetEnemyCount
 
 --============================================================
 -- 4. 主循环
@@ -317,73 +349,48 @@ local SetEnemyCount         = NCF.SetEnemyCount
 local function CreateRotation()
 
     local function Rotation()
-        -- GCD
         local gcd = math.max(GetSpellCooldownRemain(61304), 0.25)
-
-        -- 移动检测
         local isMoving = GetUnitSpeed("player") > 0
-
-        -- 敌人数量 (每帧更新)
-        local enemyCount = GetActiveEnemyAmount(40, true)  -- 远程40, 近战8
+        local enemyCount = GetActiveEnemyAmount(40, true)
         SetEnemyCount(enemyCount)
 
-        -- 局部 IsReady
         local function IsReady(spellId)
             return GetSpellCooldownRemain(spellId) <= gcd
         end
 
-        ----------------------------------------
         -- 打断 (最高优先级)
-        ----------------------------------------
         if IsReady(SPELL.Interrupt) and not ShouldSkipSpell(SPELL.Interrupt) then
-            local target = NCF.GetInterruptTarget(30, false)
+            local target = NCF.GetInterruptTarget(10, false)
             if target then
                 return "InstantSpell", SPELL.Interrupt, target
             end
         end
 
-        ----------------------------------------
-        -- 战前 Buff
-        ----------------------------------------
-        -- 示例: if not HasBuff(BUFF.SomeBuff) then return "spell", SPELL.SomeBuff end
-
-        ----------------------------------------
-        -- 战斗检查 (脱战时不往下执行)
-        ----------------------------------------
-        if not UnitAffectingCombat("player") and not (UnitExists("target") and UnitAffectingCombat("target")) then
+        -- 战斗检查 (自己/目标/队友任一在战斗中)
+        if not NCF.IsInCombat() then
             return "spell", 61304
         end
 
-        ----------------------------------------
-        -- 爆发 (burstModeEnabled + 某个具体条件)
-        ----------------------------------------
+        -- 爆发 / 饰品
         if NCF.burstModeEnabled and HasBuff(BUFF.ProcBuff) then
             NCF.UseTrinket()
             if NCF.enablePotion then NCF.UseCombatPotion() end
         end
 
-        -- 大招 (带 TTD 保护)
-        if NCF.MeetsSpellTTD(SPELL.BigCD) and IsReady(SPELL.BigCD) and not ShouldSkipSpell(SPELL.BigCD) then
-            return "spell", SPELL.BigCD
+        if NCF.MeetsSpellTTD(SPELL.BigCooldown) and IsReady(SPELL.BigCooldown) and not ShouldSkipSpell(SPELL.BigCooldown) then
+            return "spell", SPELL.BigCooldown
         end
 
-        ----------------------------------------
-        -- AOE (多目标写在 ST 之前)
-        ----------------------------------------
+        -- AOE
         if enemyCount >= 3 then
-            -- ...
+            -- AOE 逻辑...
         end
 
-        ----------------------------------------
-        -- 单目标
-        ----------------------------------------
-
-        -- DoT 维护
-        if GetDebuffRemain(DEBUFF.MyDot, "target") < 3 and IsReady(SPELL.MainNuke) and not ShouldSkipSpell(SPELL.MainNuke) then
+        -- ST
+        if GetDebuffRemain(DEBUFF.MyDot, "target") < 2 and IsReady(SPELL.MainNuke) and not ShouldSkipSpell(SPELL.MainNuke) then
             return "spell", SPELL.MainNuke
         end
 
-        -- 填充
         if not isMoving and IsReady(SPELL.Filler) and not ShouldSkipSpell(SPELL.Filler) then
             return "spell", SPELL.Filler
         end
@@ -399,277 +406,208 @@ return CreateRotation()
 
 ---
 
-## 返回值 (actionType)
+### 编写规则
 
-循环函数通过 `return actionType, spellID [, target]` 告诉 NCF 该做什么。
+| 规则 | 说明 |
+|------|------|
+| `RegisterSpells` 在文件最顶部 | 必须在任何 `local` 之前 |
+| burst 技能放最前 | `default = "burst"` 的技能放列表最上方 |
+| 技能名用中文 | 显示在 UI 面板上 |
+| **每个技能必须 `not ShouldSkipSpell()`** | 否则禁用/爆发保护不生效 |
+| 打断最优先 | 放在战斗逻辑最顶部 |
+| AOE 在 ST 之前 | 多目标分支先判断 |
+| 文件末尾 `return CreateRotation()` | 必须返回循环闭包 |
+| 非战斗返回 `"spell", 61304` | GCD 占位符 |
 
-### `"spell"` — 普通施法
+---
 
-对当前目标 (或指定目标) 施法。适用于大多数技能。
+### 返回值 (actionType)
+
+循环通过 `return actionType, spellID [, target]` 告诉 NCF 该做什么。
+
+---
+
+#### `"spell"` — 普通施法 (最常用)
+
+对当前目标或指定单位施法。
 
 ```lua
--- 对当前目标施法
-return "spell", SPELL.Fireball
-
--- 对指定目标施法 (如治疗队友)
-return "spell", SPELL.HealingWave, lowestUnit
+return "spell", SPELL.Fireball               -- 对当前目标
+return "spell", SPELL.HealingWave, lowestUnit -- 对指定队友
 ```
 
-### `"InstantSpell"` — 瞬发自动转向施法
+适用于: 读条技能、引导技能、蓄力技能、瞬发(对当前目标)、自身Buff。
 
-自动转向目标 → 施法 → 恢复原朝向。**必须同时满足三个条件**:
+---
 
-1. 技能必须是**瞬发** (无读条、无引导、无蓄力)
-2. 技能必须**需要面朝**目标 (攻击性技能对敌人)
-3. 目标必须是**动态扫描得到的 GUID** (非 `"target"`)
+#### `"InstantSpell"` — 瞬发 + 自动面朝
+
+NCF 自动转向目标 → 施法 → 恢复朝向。
 
 ```lua
--- 打断 (扫描到的目标可能在身后)
+-- 打断
 local target = NCF.GetInterruptTarget(5, false)
 if target then
     return "InstantSpell", SPELL.Kick, target
 end
 
--- 对没有 DoT 的敌人上 DoT
+-- 给没有 DoT 的敌人上 DoT
 local target = NCF.GetEnemyWithoutDebuff(DEBUFF.FlameShock, 40, false, SPELL.FlameShock)
 if target then
     return "InstantSpell", SPELL.FlameShock, target
 end
+
+-- AOE: 找周围敌人最多的目标
+local best = NCF.GetBestAOETarget(8, 40, false, SPELL.KillCommand)
+if best then
+    return "InstantSpell", SPELL.KillCommand, best
+end
 ```
 
-**不要用 `InstantSpell` 的场景**: 有读条的技能、治疗队友 (不需要面朝)、自身 buff、对当前 `"target"` 施法。这些都用普通 `"spell"`。
+**三个必要条件 (缺一不可):**
 
-### `"castselflocation"` — 地面技能放脚下
+| # | 条件 | 原因 |
+|---|------|------|
+| 1 | **瞬发技能** (无读条/引导/蓄力) | 施法后立即恢复朝向，非瞬发会中断 |
+| 2 | **需要面朝目标** (对敌人的进攻技能) | 治疗队友/自身Buff不需要面朝，用 `"spell"` |
+| 3 | **动态扫描出的目标** | 对当前 `"target"` 直接用 `"spell"` 即可 |
 
-对需要点地的技能，自动放在玩家脚下。
+---
+
+#### `"castselflocation"` — 脚下放地面技能
+
+施法后自动在玩家脚下点击。
 
 ```lua
--- 天堂之羽 (给自己加速)
-return "castselflocation", SPELL.AngelsFeather
+return "castselflocation", SPELL.AngelsFeather  -- 天堂之羽放脚下加速
 ```
 
-### `"interrupt_and_cast"` — 打断自身引导后施法
+---
 
-用于引导中需要打断自己来释放更高优先级的技能。
+#### `"cast_ground_spell_to_tank"` — 地面技能放在坦克位置
+
+施法后自动在坦克位置点击。优先选择有仇恨的坦克 (2个坦克时选正在扛怪的)，检查距离 (≤40码) 和视线。如果没有坦克、坦克超出距离或视线被遮挡，则退回到玩家脚下。
 
 ```lua
--- 暗牧: 引导精神鞭笞时，高优先级技能打断引导
+return "cast_ground_spell_to_tank", SPELL.HealingRain  -- 治疗之雨放在坦克脚下
+```
+
+适用于: 治疗类地面技能 (治疗之雨等)。
+
+---
+
+#### `"interrupt_and_cast"` — 打断自己的引导后施法
+
+用于需要打断自己引导来释放更高优先级技能的场景。
+
+```lua
+-- 暗牧: 引导精神鞭笞时，高优先级技能需要打断引导
 local isChanneling = IsChannelingMindFlay()
 local spellType = isChanneling and "interrupt_and_cast" or "spell"
 
--- 高优先级技能用 spellType (会打断引导)
-if IsReady(SPELL.VoidBlast) then
-    return spellType, SPELL.VoidBlast
-end
+-- 高优先级: 需要打断引导
+return spellType, SPELL.VoidBlast
 
--- 精神鞭笞本身用 "spell" (不打断自己)
+-- 精神鞭笞自己: 永远用 "spell"，不打断自己
 return "spell", SPELL.MindFlay
 ```
 
-### `"item"` — 使用物品
+---
+
+#### `"item"` — 使用物品
 
 ```lua
-return "item", itemName
+return "item", itemID
 ```
-
-### `return nil` — 本帧无建议
-
-```lua
-return nil
-```
-
-### `return "spell", 61304` — 脱战占位
-
-脱战时返回 GCD 占位符，循环暂停等待进入战斗。
 
 ---
 
-## 编写规则
-
-| 规则 | 原因 |
-|------|------|
-| **每个技能必须检查 `not ShouldSkipSpell(spellID)`** | 否则禁用/爆发保护不生效 |
-| **RegisterSpells 技能名用中文** | 显示在 UI 面板上 |
-| **burst 技能写在 RegisterSpells 最前面** | UI 显示排序 |
-| **打断放在最高优先级** | 打断永远最重要 |
-| **AOE 分支写在 ST 之前** | 先判断多目标再判断单目标 |
-| **爆发触发饰品/药水需要 2+ 条件** | `burstModeEnabled` 加上某个具体 buff/状态，不能只判断 burstModeEnabled |
-| **局部化 NCF 函数** | `local HasBuff = NCF.HasBuff`，提升性能 |
+#### `return nil` — 本帧无建议
 
 ---
 
-# API 参考
+#### 地面技能自动点击
 
-> 在循环文件中先局部化再使用: `local HasBuff = NCF.HasBuff`
-
----
-
-## Buff / Debuff
-
-### HasBuff(spellID [, unit])
-
-检查 buff 是否存在。只检测玩家自己施放的 buff。
-
-- `unit`: 默认 `"player"`
-- 返回: `boolean`
-
-```lua
--- 检查自己是否有某个 buff
-if HasBuff(BUFF.Bloodlust) then ... end
-
--- 检查队友是否有 buff
-if HasBuff(BUFF.Riptide, "party1") then ... end
-```
-
-### GetBuffRemain(spellID [, unit])
-
-获取 buff 剩余秒数。
-
-- `unit`: 默认 `"player"`
-- 返回: 秒数。无 buff 返回 `0`，永久 buff 返回 `999`
-
-```lua
-local remain = GetBuffRemain(BUFF.Recklessness)
-if remain > 5 then ... end
-```
-
-### GetBuffStacks(spellID [, unit])
-
-获取 buff 层数。
-
-- `unit`: 默认 `"player"`
-- 返回: 层数，无 buff 返回 `0`
-
-```lua
-local stacks = GetBuffStacks(BUFF.DemonicCore)
-if stacks >= 2 then ... end
-```
-
-### HasDebuff(spellID [, unit])
-
-检查 debuff 是否存在。只检测玩家自己施放的 debuff。
-
-- `unit`: 默认 `"target"`
-- 返回: `boolean`
-
-```lua
-if not HasDebuff(DEBUFF.Rip, "target") then
-    -- 需要补 DoT
-end
-```
-
-### GetDebuffRemain(spellID [, unit])
-
-获取 debuff 剩余秒数。
-
-- `unit`: 默认 `"target"`
-- 返回: 秒数。无 debuff 返回 `0`，永久返回 `999`
-
-```lua
-if GetDebuffRemain(DEBUFF.Rupture, "target") < 5 then
-    -- 快到期了，刷新
-end
-```
-
-### GetDebuffStacks(spellID [, unit])
-
-获取 debuff 层数。
-
-- `unit`: 默认 `"target"`
-- 返回: 层数，无 debuff 返回 `0`
+死亡凋零、火焰风暴、地震术等地面技能已内置自动点击，直接用 `"spell"` 返回即可。
 
 ---
 
-## 技能冷却与充能
+### API 参考
 
-### GetSpellCooldownRemain(spellID)
+> 推荐先局部化: `local HasBuff = NCF.HasBuff`。也可直接 `NCF.HasBuff(...)` 调用。
 
-获取技能剩余 CD。
+---
 
-- 返回: 秒数，`0` = 可用
+#### Buff / Debuff
+
+| 函数 | 返回值 | 说明 |
+|------|--------|------|
+| `HasBuff(spellID [, unit])` | boolean | 是否有Buff。unit 默认 `"player"` |
+| `GetBuffRemain(spellID [, unit])` | number | Buff剩余秒数。无=`0`，永久=`999` |
+| `GetBuffStacks(spellID [, unit])` | number | Buff层数。无=`0` |
+| `HasDebuff(spellID [, unit])` | boolean | 目标是否有Debuff (玩家施放的)。unit 默认 `"target"` |
+| `GetDebuffRemain(spellID [, unit])` | number | Debuff剩余秒数。无=`0`，永久=`999` |
+| `GetDebuffStacks(spellID [, unit])` | number | Debuff层数。无=`0` |
+
+> Buff/Debuff 只检测**玩家施放**的 (PLAYER filter)。
 
 ```lua
-local cd = GetSpellCooldownRemain(SPELL.Combustion)
-if cd > 30 then
-    -- 大招还有30秒以上，可以做别的
-end
+-- 自己是否有鲁莽
+if HasBuff(BUFF.Recklessness) then ... end
+
+-- 坦克是否有大地之盾
+if HasBuff(BUFF.EarthShield, tankUnit) then ... end
+
+-- 目标割裂剩余时间
+local remain = GetDebuffRemain(DEBUFF.Rupture, "target")
+if remain < 5 then ... end  -- 快掉了，刷新
+
+-- 充能爆发层数
+local stacks = GetBuffStacks(BUFF.ChargedBlast)
+if stacks >= 12 then ... end
 ```
 
-### IsReady 模式 (推荐)
+---
 
-在 `Rotation()` 内定义局部函数，CD ≤ GCD 视为可用:
+#### 技能冷却与充能
+
+| 函数 | 返回值 | 说明 |
+|------|--------|------|
+| `GetSpellCooldownRemain(spellID)` | number | 剩余CD秒数。`0` = 可用 |
+| `IsSpellReady(spellID)` | boolean | CD ≤ GCD 视为可用 |
+| `GetSpellCharges(spellID)` | number | 充能数含小数。如 `1.5` = 1层满+恢复50% |
+| `GetSpellChargeInfo(spellID)` | table/nil | `{currentCharges, maxCharges, cooldownStartTime, cooldownDuration, chargeModRate}` |
+| `IsSpellInRange(spellID [, unit])` | boolean | 在射程内 **且** 有视线(LoS)。unit 默认 `"target"` |
+| `RefreshGCD()` | — | 更新 `NCF.gcd_max`。仅当需要 `gcd_max` 做计算时才调用 |
 
 ```lua
-local gcd = math.max(GetSpellCooldownRemain(61304), 0.25)
+-- 技能CD检查 (大多数循环使用内联 IsReady)
 local function IsReady(spellId)
     return GetSpellCooldownRemain(spellId) <= gcd
 end
 
-if IsReady(SPELL.Fireball) and not ShouldSkipSpell(SPELL.Fireball) then
-    return "spell", SPELL.Fireball
-end
-```
-
-### GetSpellCharges(spellID)
-
-获取充能数 (含小数)。`1.5` 表示 1 层满 + 正在恢复 50%。
-
-- 返回: 浮点数
-
-```lua
+-- 充能检查
 local charges = GetSpellCharges(SPELL.BarbedShot)
-if charges > 1.9 then
-    -- 快满了，赶紧用一次
+if charges > 1.9 then ... end  -- 快满了，用一个
+
+-- 技能射程 + 视线
+if NCF.IsSpellInRange(SPELL.Riptide, unit) then
+    return "spell", SPELL.Riptide, unit
 end
-```
-
-### GetSpellChargeInfo(spellID)
-
-获取充能详细信息。
-
-- 返回: `{ currentCharges, maxCharges, cooldownStartTime, cooldownDuration, chargeModRate }` 或 `nil`
-
-### IsSpellInRange(spellID [, unit])
-
-检查技能是否在目标射程内 (含视线检查)。
-
-- `unit`: 默认 `"target"`
-- 返回: `boolean`
-
-```lua
-if NCF.IsSpellInRange(SPELL.Riptide, "party2") then
-    return "spell", SPELL.Riptide, "party2"
-end
-```
-
-### RefreshGCD()
-
-更新 `NCF.gcd_max` (GCD 总时长，如 1.5 秒)。**大多数循环不需要调用**。只有当你需要用 `NCF.gcd_max` 做定时计算时才调用 (如 `touchCD > gcd_max * 4`)。
-
-普通用法只需要 GCD 剩余时间:
-```lua
-local gcd = math.max(GetSpellCooldownRemain(61304), 0.25)
 ```
 
 ---
 
-## 资源
+#### 资源
 
-### GetUnitPower(unit, powerType)
+| 函数 | 返回值 | 说明 |
+|------|--------|------|
+| `GetUnitPower(unit, powerType)` | number | 当前资源值 |
+| `GetUnitPowerMax(unit, powerType)` | number | 最大资源值 |
+| `GetSpellCostByType(spellID, Enum.PowerType.X)` | number/nil | 技能消耗量。免费=`0`，无法获取=`nil` |
+| `CanAffordSpell(spellID)` | boolean | 玩家是否有足够资源施放该技能 |
 
-获取资源值。
-
-- `unit`: 通常 `"player"`
-- `powerType`: 资源类型字符串 (见下表)
-- 返回: 数值
-
-```lua
-local energy = NCF.GetUnitPower("player", "energy")
-local comboPoints = NCF.GetUnitPower("player", "combopoints")
-local runes = NCF.GetUnitPower("player", "runes")  -- 0-6
-```
-
-**powerType 完整列表:**
+**powerType 字符串对照:**
 
 | 字符串 | 资源 | 职业 |
 |--------|------|------|
@@ -687,140 +625,131 @@ local runes = NCF.GetUnitPower("player", "runes")  -- 0-6
 | `"insanity"` | 狂乱值 | 暗牧 |
 | `"arcanecharges"` | 奥术充能 | 奥法 |
 | `"fury"` | 怒火 | 恶魔猎手 |
-| `"pain"` | 痛苦 | 复仇恶魔猎手 |
+| `"pain"` | 痛苦 | 复仇DH |
 | `"essence"` | 精华 | 唤魔师 |
 
-### GetUnitPowerMax(unit, powerType)
-
-获取资源最大值。参数同上。
-
-### GetSpellCostByType(spellID, powerType)
-
-获取技能当前消耗量。有些技能会因 buff 变为免费。
-
-- `powerType`: 必须用 `Enum.PowerType.X` 枚举值
-- 返回: 消耗量，技能免费时返回 `0`，无法获取返回 `nil`
-
 ```lua
+local energy = GetUnitPower("player", "energy")
+local combo  = GetUnitPower("player", "combopoints")
+local runes  = GetUnitPower("player", "runes")  -- 0-6 可用符文
+
+-- 检查技能是否免费
 local cost = NCF.GetSpellCostByType(SPELL.LightsHammer, Enum.PowerType.HolyPower)
 if cost == 0 then
-    -- 免费，立即使用
-    return "spell", SPELL.LightsHammer
+    return "spell", SPELL.LightsHammer  -- 免费，立即用
 end
 ```
 
 ---
 
-## 血量
+#### 血量
 
-### GetUnitHealthPct(unit)
-
-获取单位血量百分比。
-
-- 返回: `0-100`
+| 函数 | 返回值 | 说明 |
+|------|--------|------|
+| `GetUnitHealthPct(unit)` | number | 血量百分比 0-100 |
+| `GetTargetHealthPct()` | number | 等同于 `GetUnitHealthPct("target")` |
+| `GetUnitHealth(unit)` | number | 当前血量原始值 |
+| `GetUnitHealthMax(unit)` | number | 最大血量原始值 |
 
 ```lua
-local myHP = NCF.GetUnitHealthPct("player")
-local targetHP = NCF.GetUnitHealthPct("target")
+local myHP = GetUnitHealthPct("player")
+if myHP < 30 then ... end  -- 血量危险
+
+-- 斩杀阶段
+if GetTargetHealthPct() <= 20 then
+    return "spell", SPELL.Execute
+end
 ```
-
-### GetTargetHealthPct()
-
-获取当前目标血量百分比。等同于 `GetUnitHealthPct("target")`。
-
-### GetUnitHealth(unit) / GetUnitHealthMax(unit)
-
-获取原始血量 / 最大血量值。
 
 ---
 
-## 敌人检测
+#### 敌人检测
 
-### GetActiveEnemyAmount(range, needCheckFront)
+##### `GetActiveEnemyAmount(range, needFront)` — 范围内敌人数量
 
-获取范围内的敌人数量及其 GUID。
+| 参数 | 说明 |
+|------|------|
+| range | 检测范围 (码) |
+| needFront | `true` = 只算前方180°，`false` = 360° |
 
-- `range`: 范围码数
-- `needCheckFront`: `true` 只算前方 180°，`false` 算 360°
-- 返回: `count, guid1, guid2, ...` (GUID 可直接当 unit 用)
+返回: `count, guid1, guid2, ...` — GUID 可直接当 unit token 用。
 
 ```lua
--- 只需要数量
+-- 只要数量
 local enemyCount = GetActiveEnemyAmount(8, false)
-SetEnemyCount(enemyCount)
 
 -- 遍历所有敌人检查 debuff
 local results = {GetActiveEnemyAmount(40, true)}
 local count = results[1]
 for i = 2, count + 1 do
     local unit = results[i]
-    if not HasDebuff(DEBUFF.ShadowWordPain, unit) then
-        -- 该目标没有 DoT
+    if not HasDebuff(DEBUFF.SWPain, unit) then
+        -- 这个敌人没有暗言术痛
     end
 end
 ```
 
-### GetEnemyWithoutDebuff(debuffID, range, needFront [, spellID])
+##### `SetEnemyCount(count)` / `GetEnemyCount()` — 存取敌人数量
 
-查找范围内**没有**指定 debuff 的敌人。
+每帧开头 `SetEnemyCount` 更新，供 UI 显示。
 
-- `spellID`: 可选，用于射程检查
-- 返回: unit 或 `nil`
+##### `GetEnemyWithoutDebuff(debuffID, range, needFront, spellID)` — 找没有指定 Debuff 的敌人
+
+| 参数 | 说明 |
+|------|------|
+| debuffID | 要检查的 Debuff ID |
+| range | 搜索范围 (码) |
+| needFront | 是否需要面朝。搭配 `InstantSpell` 时传 `false` |
+| spellID | 可选，额外检查技能射程 |
+
+返回: `unit` 或 `nil`
 
 ```lua
--- 找没有烈焰震击的敌人
 local target = NCF.GetEnemyWithoutDebuff(DEBUFF.FlameShock, 40, false, SPELL.FlameShock)
 if target then
     return "InstantSpell", SPELL.FlameShock, target
 end
 ```
 
-### GetEnemyWithDebuff(debuffID, range, needFront [, spellID])
+##### `GetEnemyWithDebuff(debuffID, range, needFront, spellID)` — 找有指定 Debuff 的敌人
 
-查找范围内**有**指定 debuff 的敌人。
+用法同上，返回**有**该 Debuff 的第一个敌人。
 
 ```lua
--- 找有烈焰震击的敌人 (释放熔岩爆裂)
 local target = NCF.GetEnemyWithDebuff(DEBUFF.FlameShock, 40, false, SPELL.LavaBurst)
 if target then
     return "InstantSpell", SPELL.LavaBurst, target
 end
 ```
 
-### GetBestAOETarget(range, searchRange, needFront [, spellID])
+##### `GetBestAOETarget(range, searchRange, needFront, spellID)` — 最佳 AOE 目标
 
-查找周围敌人最密集的目标 (AOE 最佳目标)。
+| 参数 | 说明 |
+|------|------|
+| range | 爆炸半径 (以目标为中心统计) |
+| searchRange | 搜索范围 |
+| needFront | 是否需要面朝 |
+| spellID | 可选，射程检查 |
 
-- `range`: 以目标为中心统计多少码内的敌人
-- `searchRange`: 搜索多少码内的候选目标
-- 返回: unit 或 `nil`
+返回: 周围敌人最多的 `unit` 或 `nil`
 
 ```lua
-local bestTarget = NCF.GetBestAOETarget(8, 40, false, SPELL.KillCommand)
-if bestTarget then
-    return "InstantSpell", SPELL.KillCommand, bestTarget
+local best = NCF.GetBestAOETarget(8, 40, false, SPELL.KillCommand)
+if best then
+    return "InstantSpell", SPELL.KillCommand, best
 end
 ```
 
----
+##### `GetInterruptTarget(range, needFront)` — 找可打断的敌人
 
-## 打断
+| 参数 | 说明 |
+|------|------|
+| range | 检测范围 (码) |
+| needFront | 搭配 `InstantSpell` 时传 `false` |
 
-### GetInterruptTarget(range, needCheckFront)
-
-查找范围内可打断的敌人。
-
-- `range`: 检测范围码数
-- `needCheckFront`: 是否需要面朝。如果用 `InstantSpell` 返回，设为 `false` (NCF 会自动转向)
-- 返回: unit 或 `nil`
-
-**重要机制:**
-- **焦点优先**: 如果有焦点目标且可攻击，只检查焦点。焦点没在读条就直接返回 `nil`，不扫描其他敌人
-- **延迟打断**: 使用 `NCF.interruptDelay` (用户在设置面板配置)。≤1=读条完成百分比，>1=剩余秒数。有随机偏移
-- **引导技能**: 引导 (channeling) 立即打断，不受延迟影响
+返回: `unit` 或 `nil`
 
 ```lua
--- 标准打断写法
 if IsReady(SPELL.Kick) and not ShouldSkipSpell(SPELL.Kick) then
     local target = NCF.GetInterruptTarget(5, false)
     if target then
@@ -829,297 +758,301 @@ if IsReady(SPELL.Kick) and not ShouldSkipSpell(SPELL.Kick) then
 end
 ```
 
-**多打断源** (玩家打断 + 宠物打断):
-
-```lua
--- 1. 玩家打断 (优先)
-if IsReady(SPELL.CounterSpell) and not ShouldSkipSpell(SPELL.CounterSpell) then
-    local target = NCF.GetInterruptTarget(40, false)
-    if target then
-        return "InstantSpell", SPELL.CounterSpell, target
-    end
-end
-
--- 2. 宠物打断 (玩家打断 CD 时的备选)
-if IsReady(SPELL.AxeToss) and not ShouldSkipSpell(SPELL.AxeToss) and not IsReady(SPELL.CounterSpell) then
-    local target = NCF.GetInterruptTarget(35, false)
-    if target then
-        return "InstantSpell", SPELL.AxeToss, target
-    end
-end
-```
+**重要行为:**
+- **焦点优先**: 有焦点时只检查焦点。焦点没在读条就返回 `nil`，不扫描其他敌人。
+- **延迟打断**: 仅对施法(casting)生效，引导(channeling)立即打断。
 
 ---
 
-## 位置与朝向
+#### 位置与朝向
 
-### GetDistanceToTarget([unit])
-
-获取与目标的有效距离 (减去双方战斗距离)。
-
-- `unit`: 默认 `"target"`
-- 返回: 码数，无目标返回 `999`
-
-### IsUnitInFront(unit)
-
-检查单位是否在玩家前方 180°。
-
-- 返回: `boolean`
+| 函数 | 返回值 | 说明 |
+|------|--------|------|
+| `GetDistanceToTarget([unit])` | number | 有效距离(码)，减去双方战斗距离。无目标=`999` |
+| `IsUnitInFront(unit)` | boolean | 是否在玩家前方180° |
 
 ---
 
-## 战斗状态
+#### 战斗状态
 
-### GetCombatTime()
-
-获取当前战斗持续秒数，脱战返回 `0`。
-
-### GetTimeSinceCast(spellID)
-
-获取上次成功释放该技能后经过的秒数。从未释放返回 `999`。
-
-### HasTalent(talentID)
-
-检查是否有该天赋。
-
-- 返回: `boolean`
+| 函数 | 返回值 | 说明 |
+|------|--------|------|
+| `IsInCombat()` | boolean | 组队感知的战斗检测：玩家/目标/队友任一在战斗中 |
+| `GetCombatTime()` | number | 战斗持续秒数。脱战=`0` |
+| `GetTimeSinceCast(spellID)` | number | 上次施放后经过的秒数。从未施放=`999` |
+| `HasTalent(talentID)` | boolean | 是否有该天赋 |
+| `IsStealthed()` | boolean | 潜行/消失/暗影之舞等 |
+| `GetPetExists()` | boolean | 宠物是否存在 |
+| `IsInBossFight()` | boolean | 是否 Boss 战 (boss1-5框架) |
 
 ```lua
-if HasTalent(TALENT.FeedTheFlames) then
-    -- 特殊逻辑
-end
-```
+if HasTalent(TALENT.Doomsday) then ... end
 
-### IsStealthed()
-
-检查是否在潜行状态 (包含潜行、消失、暗影之舞等)。
-
-### GetPetExists()
-
-检查宠物是否存在。
-
-```lua
 if not NCF.GetPetExists() then
     return "spell", SPELL.SummonPet
 end
+
+if NCF.IsStealthed() then
+    return "spell", SPELL.Ambush
+end
 ```
-
-### IsInBossFight()
-
-检查是否在 Boss 战中 (通过 boss1-5 框架判断)。
 
 ---
 
-## TTD (目标存活时间)
+#### TTD (目标存活时间)
 
-### MeetsSpellTTD(spellID) — 推荐
+| 函数 | 返回值 | 说明 |
+|------|--------|------|
+| `GetMaxTTD([range])` | number | 范围内最长TTD秒数。默认40码 |
+| `MeetsTTDRequirement(minTime)` | boolean | Boss战直接true，否则 `GetMaxTTD(40) > minTime` |
+| `MeetsSpellTTD(spellID)` | boolean | 读取该技能在设置面板的TTD配置。TTD=0 不检查(返回true) |
+| `GetSpellTTD(spellID)` | number | 该技能配置的TTD要求(秒)。0=不检查 |
 
-检查技能是否满足 TTD 要求。用户在技能模式设置面板中为每个技能配置 TTD 保护秒数 (默认 0 = 不检查)。
+**GetMaxTTD 返回值规则:**
 
-- 返回: `boolean`
+| 情况 | 返回值 |
+|------|--------|
+| 敌人血量 ≥ 99% (刚开打) | `999` |
+| 训练假人 | `120` |
+| 无敌人 | `0` |
+| 正常情况 | 线性推算 |
+
+**推荐用法:** 大CD用 `MeetsSpellTTD`，让用户在设置面板自行调整:
 
 ```lua
--- 标准用法: 大招前检查 TTD
 if NCF.MeetsSpellTTD(SPELL.AdrenalineRush) and IsReady(SPELL.AdrenalineRush) and not ShouldSkipSpell(SPELL.AdrenalineRush) then
     return "spell", SPELL.AdrenalineRush
 end
 ```
 
-### GetMaxTTD([range])
-
-获取范围内所有敌人中最长的存活预估时间。
-
-- `range`: 默认 40
-- 返回: 秒数。训练假人返回 `120`，刚开战 (血量≥99%) 返回 `999`，无敌人返回 `0`
+硬编码 TTD 阈值用 `GetMaxTTD`:
 
 ```lua
--- 硬编码阈值 (当 MeetsSpellTTD 不够灵活时)
 local ttd = NCF.GetMaxTTD()
-if ttd >= 15 then
-    return "spell", SPELL.Dragonrage
-end
+if ttd >= 30 and IsReady(SPELL.Dragonrage) then ... end  -- ST: 需要30秒
+if ttd >= 15 and IsReady(SPELL.Dragonrage) then ... end  -- AOE: 15秒就够
 ```
-
-### MeetsTTDRequirement(minTime)
-
-Boss 战直接返回 `true`，非 Boss 战判断 40 码内 TTD > minTime。
-
-### GetSpellTTD(spellID)
-
-获取该技能在设置面板中配置的 TTD 秒数 (0 = 不检查)。
 
 ---
 
-## 模式判断
+#### 模式判断
 
-### ShouldSkipSpell(spellID)
+| 函数/变量 | 类型 | 说明 |
+|-----------|------|------|
+| `ShouldSkipSpell(spellID)` | boolean | disabled→始终跳; burst+划水模式→跳; 其他→不跳 |
+| `NCF.burstModeEnabled` | boolean | 当前是否爆发模式 |
+| `NCF.enablePotion` | boolean | 用户是否开启战斗药水 |
 
-检查技能是否应被跳过。**每个技能判断前必须调用**。
+**ShouldSkipSpell 逻辑:**
 
-- `"disabled"` 模式 → 始终跳过
-- `"burst"` 模式 → 划水模式下跳过
-- `"normal"` 模式 → 不跳过
+| 技能模式 | 爆发模式 | 划水模式 |
+|----------|----------|----------|
+| normal | 不跳 | 不跳 |
+| burst | 不跳 | **跳过** |
+| disabled | **跳过** | **跳过** |
+
+> **每个技能判断前必须检查 `not ShouldSkipSpell()`。没有例外。**
+
+**爆发/饰品规则:** 不要仅靠 `burstModeEnabled` 触发饰品/药水，必须同时有具体状态:
 
 ```lua
--- 正确写法: 始终包含 ShouldSkipSpell
-if IsReady(SPELL.Fireball) and not ShouldSkipSpell(SPELL.Fireball) then
-    return "spell", SPELL.Fireball
+-- 正确: burstModeEnabled + 某个大招激活
+if NCF.burstModeEnabled and HasBuff(BUFF.Recklessness) then
+    NCF.UseTrinket()
+end
+
+-- 错误: 单独 burstModeEnabled
+if NCF.burstModeEnabled then
+    NCF.UseTrinket()  -- 不要这样!
 end
 ```
 
-### NCF.burstModeEnabled
-
-`boolean`，当前是否爆发模式。
-
-### NCF.enablePotion
-
-`boolean`，用户是否启用了战斗药水。
-
 ---
 
-## 治疗辅助
+#### 治疗辅助
 
-### GetGroupMembers()
-
-获取当前队伍所有存活成员列表。
-
-- 返回: `{"player", "party1", ...}` 或 `{"player", "raid1", ...}`，过滤死亡/离线
-
-### GetLowestHealthMember(range, threshold [, spellID])
-
-获取血量最低的队友。
-
-- `range`: 距离限制
-- `threshold`: 只返回血量低于此百分比的目标 (默认 100)
-- `spellID`: 可选，用技能射程检查 (优先于 range)
-- 返回: `unit, healthPct` 或 `nil, 100`
+| 函数 | 返回值 | 说明 |
+|------|--------|------|
+| `GetGroupMembers()` | table | `{"player","party1",...}` 或 `{"player","raid1",...}`。过滤死亡/离线 |
+| `GetGroupAverageHealthPct([range, count])` | number | 团队平均血量%。count=取最低N人算 |
+| `GetLowestHealthMember([range, threshold, spellID])` | unit, pct | 血量最低的队友。无=`nil, 100` |
+| `GetTankUnit()` | unit/nil | 第一个存活的TANK |
+| `GetDispellableUnit(type [, range, checkEnemy])` | unit/nil | 可驱散的目标 |
 
 ```lua
-local unit, hp = NCF.GetLowestHealthMember(40, 80, SPELL.HealingWave)
-if unit then
+-- 全团40码内平均血量
+local avgHp = GetGroupAverageHealthPct(40)
+
+-- 最低3人平均
+local avgHp = GetGroupAverageHealthPct(40, 3)
+
+-- 血量最低的队友 (用技能射程检查)
+local unit, hp = GetLowestHealthMember(40, 100, SPELL.HealingWave)
+if unit and hp < 90 then
     return "spell", SPELL.HealingWave, unit
 end
-```
 
-### GetGroupAverageHealthPct([range, count])
-
-获取团队平均血量。
-
-- `range`: 距离限制 (可选)
-- `count`: 只取血量最低的 N 人算均值 (可选)
-- 返回: 百分比 `0-100`
-
-```lua
-local avgHP = NCF.GetGroupAverageHealthPct(40)     -- 40码内全员平均
-local avgHP = NCF.GetGroupAverageHealthPct(40, 3)   -- 40码内最低3人平均
-```
-
-### GetTankUnit()
-
-获取队伍中第一个存活的坦克。
-
-- 返回: unit 或 `nil`
-
-```lua
-local tank = NCF.GetTankUnit()
+-- 坦克大地之盾维护
+local tank = GetTankUnit()
 if tank and not HasBuff(BUFF.EarthShield, tank) then
     return "spell", SPELL.EarthShield, tank
 end
 ```
 
-### GetDispellableUnit(dispelType [, range, checkEnemy])
-
-查找有可驱散效果的目标。
-
-- `dispelType`: 单个字符串或数组
-  - 友方 debuff: `"Curse"`, `"Poison"`, `"Magic"`, `"Disease"`
-  - 敌方 buff (需 `checkEnemy=true`): `"Enrage"`, `"Magic"`
-  - 多类型: `{"Curse", "Poison"}`
-- `range`: 距离限制
-- `checkEnemy`: `true` = 检查敌人 buff，`false`(默认) = 检查友方 debuff
-- 返回: unit 或 `nil`
+**驱散:**
 
 ```lua
--- 驱散友方 Magic debuff
-local target = NCF.GetDispellableUnit("Magic", 40)
-if target then
-    return "spell", SPELL.PurifySpirit, target
-end
+-- 友方 debuff 驱散
+local unit = NCF.GetDispellableUnit("Magic", 40)
+if unit then return "spell", SPELL.Purify, unit end
 
--- 驱散敌方 Enrage buff
+-- 多类型
+local unit = NCF.GetDispellableUnit({"Curse", "Poison"}, 40)
+
+-- 敌方 buff 驱散 (checkEnemy=true)
 local enemy = NCF.GetDispellableUnit("Enrage", 10, true)
-if enemy then
-    return "InstantSpell", SPELL.Soothe, enemy
-end
+if enemy then return "InstantSpell", SPELL.Soothe, enemy end
 ```
+
+**dispelType 可选值:** 友方: `"Curse"`, `"Poison"`, `"Magic"`, `"Disease"` / 敌方: `"Enrage"`, `"Magic"`
+
+> 友方驱散检查视线(LoS)，敌方驱散不检查。
 
 ---
 
-## 饰品与药水
+#### 饰品、药水与施法辅助
 
-### UseTrinket()
-
-使用饰品。优先 slot13，CD 中则用 slot14。
-
-- 返回: `boolean`
-
-### UseCombatPotion()
-
-使用背包中的战斗药水 (增强类)。不检查任何条件，由循环自行判断何时调用。
-
-- 返回: `boolean`
-
-### GetRacialSpell()
-
-获取当前种族的爆发技能 ID。大多数种族返回 `nil`。
+| 函数 | 返回值 | 说明 |
+|------|--------|------|
+| `UseTrinket()` | boolean | 使用饰品。优先slot13，CD则用slot14 |
+| `UseCombatPotion()` | boolean | 使用背包中的增强药水 |
+| `GetRacialSpell()` | number/nil | 种族爆发技能ID。大部分种族返回 `nil` |
 
 ```lua
--- 爆发阶段标准写法
-if NCF.burstModeEnabled and hasSomeBigBuff then
+-- 爆发阶段
+if NCF.burstModeEnabled and HasBuff(BUFF.BigCD) then
     NCF.UseTrinket()
     if NCF.enablePotion then NCF.UseCombatPotion() end
-    local racialSpell = NCF.GetRacialSpell()
-    if racialSpell and IsReady(racialSpell) then
-        return "spell", racialSpell
+    local racial = NCF.GetRacialSpell()
+    if racial and IsReady(racial) then
+        return "spell", racial
     end
 end
 ```
 
 ---
 
-## 调试技巧
+#### 投射物追踪
+
+追踪技能飞行状态，防止重复施放。
+
+**注册 (循环文件顶部，SPELL 表之后):**
+
+```lua
+NCF.RegisterProjectile(SPELL.Frostbolt, 35)       -- 35 码/秒
+NCF.RegisterProjectile(SPELL.Fireball, 45)         -- 45 码/秒
+NCF.RegisterProjectile(SPELL.Meteor, nil, 3.0)     -- 固定 3 秒飞行时间
+```
+
+| 函数 | 返回值 | 说明 |
+|------|--------|------|
+| `RegisterProjectile(spellID, speed, fixedTime)` | — | 注册投射物。speed=码/秒，fixedTime=固定秒数 |
+| `GetProjectileCount(id1, id2, ...)` | number | 飞行中的投射物总数 (支持多个技能) |
+
+```lua
+-- 检查多个技能的飞行中总数
+local inFlight = NCF.GetProjectileCount(SPELL.Frostbolt, SPELL.IceLance, SPELL.Flurry)
+if inFlight < 2 then
+    return "spell", SPELL.Frostbolt
+end
+
+-- 单个技能
+if NCF.GetProjectileCount(SPELL.Frostbolt) == 0 then
+    return "spell", SPELL.Frostbolt
+end
+```
+
+- 同一技能可追踪多个飞行实例
+- `UNIT_SPELLCAST_SUCCEEDED` 自动记录，脱战自动清空
+- 未注册的技能自动忽略，无性能开销
+
+---
+
+#### 技能队列 (循环级)
+
+供循环文件检查和处理用户通过 `NCFInsert` 插入的技能。
+
+| 函数 | 返回值 | 说明 |
+|------|--------|------|
+| `QueueSpell(spellID [, target])` | — | 添加技能到队列。同一技能不重复，会刷新时间 |
+| `GetQueuedSpell([id1, id2, ...])` | spellID, target / nil | 不传参=队列第一个；传参=匹配指定ID |
+| `ConsumeQueuedSpell([spellID])` | boolean | 移除已处理的技能。不传参=移除第一个 |
+| `ClearSpellQueue()` | — | 清空队列 |
+| `GetSpellQueueSize()` | number | 队列长度 |
+
+超时: 默认 3 秒自动过期 (`NCF.spellQueueTimeout`)
+
+```lua
+-- 检查队列中是否有特定技能
+local id = NCF.GetQueuedSpell(SPELL.Metamorphosis, SPELL.EyeBeam)
+if id and IsReady(id) then
+    NCF.ConsumeQueuedSpell(id)
+    return "spell", id
+end
+
+-- 获取队列中任意技能
+local id, target = NCF.GetQueuedSpell()
+if id and IsReady(id) then
+    NCF.ConsumeQueuedSpell(id)
+    return "spell", id, target
+end
+```
+
+---
+
+### 调试工具
 
 ```
--- 查看当前所有 Buff (含 ID)
-/run NCFbuffs()
-
--- 查看目标所有 Debuff (含 ID)
-/run NCFdebuffs()
-
--- 开启释放日志: 设置面板 → [dev]聊天框输出释放
+/run NCFbuffs()     -- 打印自己所有 Buff 及 ID
+/run NCFdebuffs()   -- 打印目标所有 Debuff 及 ID
 ```
 
-### 如何获取技能 ID
+设置面板勾选 `[dev]聊天框输出释放` 可在聊天框看到每次施法的技能名和 ID。
 
-1. [Wowhead](https://www.wowhead.com) 搜索技能名，URL 中的数字即为 ID
+**获取技能 ID:**
+1. [Wowhead](https://www.wowhead.com) 搜索技能，URL 中的数字即 ID
 2. 游戏内: `/run print(select(7, GetSpellInfo("技能名")))`
+3. 用 `NCFbuffs()` / `NCFdebuffs()` 查看当前效果的 ID
 
-### 常见陷阱
-
-- **Buff ID ≠ 施法 ID**: 例如奥术冲击施法 ID 是 365350，但 buff ID 是 365362。用 `NCFbuffs()` / `NCFdebuffs()` 确认正确的 ID
-- **忘记 ShouldSkipSpell**: 每个技能都必须检查，否则用户无法在 UI 中禁用该技能
-- **InstantSpell 用于非瞬发技能**: 会导致转向后技能读条被打断。只有瞬发技能才能用
-- **爆发只判断 burstModeEnabled**: 必须加上第二个条件 (如某个 buff 存在)，否则一进爆发模式就立即触发饰品
+> **注意:** 施法 ID 和 Buff/Debuff ID 经常不同！例如奥术冲击施法ID `365350`，Buff ID `365362`。务必分别确认。
 
 ---
 
 ## 更新日志
 
+### v12.2
+- 新增适配器抽象层 (`NCF.API`)，解耦解锁器依赖
+- 所有解锁器相关调用 (ObjectManager, Distance, CastSpellByName 等) 统一通过 `NCF.API` 访问
+- 当前支持 Nn 适配器 (`adapters/nn.lua`)，新增解锁器只需添加对应适配器文件
+- 循环文件无需任何修改，仍然只调用 `NCF.*` 函数
+
+### v12.1
+- 新增投射物飞行追踪 (`RegisterProjectile` / `GetProjectileCount`)，防止重复施放远程技能
+- 新增循环级技能队列 API (`QueueSpell` / `GetQueuedSpell` / `ConsumeQueuedSpell`)
+- 新增资源检查 (`CanAffordSpell`)，插入队列施放前自动验证能量/法力等
+- 插入队列改为屏幕左侧可视化显示，3秒自动淡出
+
 ### v12.0
 - 支持组合快捷键 (CTRL/SHIFT/ALT + 按键)
-- 支持鼠标按键绑定 (BUTTON3/4/5/滚轮)
-- 优化打断系统 (延迟打断、百分比/秒数模式)
+- 支持鼠标按键绑定 (BUTTON3/4/5) 和鼠标滚轮
+- 优化打断系统 (延迟打断 + 随机偏移)
 - 新增悬浮面板组件开关
 - 新增 TTD 保护功能
 - 新增自动喝药功能
 - 新增多个职业循环
+- 修复配置保存问题
+- 优化 UI 界面
+
+---
+
+**祝游戏愉快！**

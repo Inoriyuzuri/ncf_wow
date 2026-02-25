@@ -220,9 +220,8 @@ local function CreateShadowRotation()
             return spellType, SPELL.Shadowform
         end
         
-        -- 战斗门槛: 自己战斗中 或 目标战斗中
-        local targetInCombat = UnitExists("target") and UnitAffectingCombat("target")
-        if not UnitAffectingCombat("player") and not targetInCombat then 
+        -- 战斗门槛 (自己/目标/队友任一在战斗中)
+        if not NCF.IsInCombat() then
             return "spell", 61304
         end
 
