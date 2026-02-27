@@ -233,7 +233,7 @@ nn/
 | 法师 | 奥术、冰霜 |
 | 武僧 | 酒仙 |
 | 圣骑士 | 惩戒 |
-| 牧师 | 暗影 |
+| 牧师 | 神圣、暗影 |
 | 盗贼 | 刺杀、狂徒 |
 | 萨满 | 恢复 |
 | 术士 | 恶魔 |
@@ -879,7 +879,8 @@ end
 |------|--------|------|
 | `GetGroupMembers()` | table | `{"player","party1",...}` 或 `{"player","raid1",...}`。过滤死亡/离线 |
 | `GetGroupAverageHealthPct([range, count])` | number | 团队平均血量%。count=取最低N人算 |
-| `GetLowestHealthMember([range, threshold, spellID])` | unit, pct | 血量最低的队友。无=`nil, 100` |
+| `GetLowestHealthMember([range, threshold, spellID, tankHpOffset])` | unit, pct | 血量最低的队友。使用真实缺血量(扣除即将到达的治疗)。tankHpOffset=Tank视为多X%血量。无=`nil, nil` |
+| `GetTrueDeficit(unit)` | deficit, maxHp | 真实缺血量: 扣除即将到达的治疗，加上治疗吸收盾。deficit ≥ 0 |
 | `GetTankUnit()` | unit/nil | 第一个存活的TANK |
 | `GetDispellableUnit(type [, range, checkEnemy])` | unit/nil | 可驱散的目标 |
 
@@ -895,6 +896,12 @@ local unit, hp = GetLowestHealthMember(40, 100, SPELL.HealingWave)
 if unit and hp < 90 then
     return "spell", SPELL.HealingWave, unit
 end
+
+-- Tank视为多10%血量, 降低治疗优先级
+local unit, hp = GetLowestHealthMember(40, 95, SPELL.FlashHeal, 10)
+
+-- 真实缺血量 (扣除即将到达的治疗, 加上治疗吸收)
+local deficit, maxHp = NCF.GetTrueDeficit("party1")
 
 -- 坦克大地之盾维护
 local tank = GetTankUnit()
@@ -1033,6 +1040,18 @@ end
 ---
 
 ## 更新日志
+
+### v12.4
+- **新增神圣牧师循环** — 智能治疗选择 (Flash Heal vs Prayer of Healing 效率比较)、Surge of Light 层数管理、Holy Word: Serenity 充能优化、Guardian Spirit 紧急治疗、Twist of Fate 保持、DPS 填充、移动时天堂之羽
+- **UI 全面美化 (ElvUI 风格)** — 面板/按钮/勾选框/下拉菜单统一扁平风格，Spinner 数字输入组件，辉光阴影效果
+- **屏幕中央通知** — 开关 NCF、切换爆发/划水模式时屏幕中央淡入淡出提示，可在设置中开关
+- **新增 `GetTrueDeficit(unit)`** — 真实缺血量计算 (扣除即将到达的治疗，加上治疗吸收)
+- **`GetLowestHealthMember` 智能化** — 使用真实缺血量比较，新增 `tankHpOffset` 参数降低 Tank 治疗优先级
+- **TTD 面板精简** — 移除文字标签，只显示数值，框体更紧凑
+- **Tooltip 提示** — 悬浮面板开关、勾选框添加鼠标悬停说明
+- **动态面板高度** — 设置面板最大高度为屏幕 75%，适配不同分辨率
+- **打断/驱散过滤重构** — 合并为通用 FilterSection，减少约 260 行重复代码
+- 修复打断/驱散过滤列表中技能 ID 类型不一致问题 (tonumber 守护)
 
 ### v12.3
 - 快捷键 (开启/爆发切换) 和打断/驱散过滤列表改为全局配置，跨角色共享

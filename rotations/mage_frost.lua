@@ -186,9 +186,15 @@ local ShouldSkipSpell = NCF.ShouldSkipSpell
 local SetEnemyCount = NCF.SetEnemyCount
 local GetUnitHealthPct = NCF.GetUnitHealthPct
 local IsSpellReady = NCF.IsSpellReady
+local RegisterProjectile = NCF.RegisterProjectile
 
 --============================================================
--- 7. Main Rotation
+-- 7. Projectile Registration
+--============================================================
+RegisterProjectile(SPELL.IceLance, 40)
+
+--============================================================
+-- 8. Main Rotation
 --============================================================
 local function CreateFrostRotation()
 
@@ -196,7 +202,6 @@ local function CreateFrostRotation()
         -- Refresh GCD max
         NCF.RefreshGCD()
         local gcd_max = NCF.gcd_max or 0.75
-        
         -- Moving detection
         local currentSpeed = GetUnitSpeed("player")
         local isMoving = currentSpeed > 0

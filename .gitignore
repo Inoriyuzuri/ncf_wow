@@ -1,5 +1,6 @@
 # Simulation files
 *.simc
+*.dat
 
 # OS generated files
 .DS_Store
