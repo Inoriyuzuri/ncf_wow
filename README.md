@@ -881,7 +881,7 @@ end
 | `GetGroupAverageHealthPct([range, count])` | number | 团队平均血量%。count=取最低N人算 |
 | `GetLowestHealthMember([range, threshold, spellID, tankHpOffset])` | unit, pct | 血量最低的队友。使用真实缺血量(扣除即将到达的治疗)。tankHpOffset=Tank视为多X%血量。无=`nil, nil` |
 | `GetTrueDeficit(unit)` | deficit, maxHp | 真实缺血量: 扣除即将到达的治疗，加上治疗吸收盾。deficit ≥ 0 |
-| `GetTankUnit()` | unit/nil | 第一个存活的TANK |
+| `GetTankUnit()` | unit/nil | 持有仇恨的坦克 (UnitThreatSituation ≥ 3)；无仇恨时返回第一个 TANK 职责成员 |
 | `GetDispellableUnit(type [, range, checkEnemy])` | unit/nil | 可驱散的目标 |
 
 ```lua
@@ -1040,6 +1040,12 @@ end
 ---
 
 ## 更新日志
+
+### v12.5
+- **治疗模式切换 (恢复萨满 & 神圣牧师)** — 新增法力效率/治疗量双模式。面板按钮一键切换，支持自定义快捷键绑定；脱战后自动恢复为法力模式
+- **神圣牧师法力天赋支持** — Flash Heal vs PoH 效率比较加入 HealingFocus、EfficientPrayers、FocusedOutburst 天赋法力修正
+- **恢复萨满移除输出循环** — 移除烈焰冲击/熔岩爆发输出部分，专注治疗
+- **`GetTankUnit` 优化** — 优先返回持有仇恨的坦克 (UnitThreatSituation ≥ 3)，无仇恨时回退到第一个 TANK 职责成员
 
 ### v12.4
 - **新增神圣牧师循环** — 智能治疗选择 (Flash Heal vs Prayer of Healing 效率比较)、Surge of Light 层数管理、Holy Word: Serenity 充能优化、Guardian Spirit 紧急治疗、Twist of Fate 保持、DPS 填充、移动时天堂之羽
