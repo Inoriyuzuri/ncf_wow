@@ -1,7 +1,7 @@
 --============================================================
 -- 神圣牧师循环 (Holy Priest Rotation)
 -- 12.0 Midnight 版本
--- 模块化文件，由主文件通过 Nn:Require() 加载
+-- 模块化文件，由主文件通过 RequireFile() 加载
 --============================================================
 
 --[[
@@ -13,8 +13,7 @@
 
 -- TODO: 0.2 心灵尖啸 (8122): 8码内敌人释放不可打断法术时使用
 -- TODO: 0.3 天使之羽 (121536): 移动超过2秒时使用
-
-0.5 驱散魔法 (528): 敌方增益魔法驱散
+-- TODO: 祝福 (Benediction): 愈合祷言跳转时有概率对目标施放恢复
 
 --- 战斗门槛: 自己战斗中 或 队友战斗中 ---
 
@@ -64,7 +63,6 @@ NCF.RegisterSpells("PRIEST", 2, {
     -- 普通技能
     { id = 21562, name = "真言术：韧", default = "normal" },
     { id = 527, name = "净化", default = "normal" },
-    { id = 528, name = "驱散魔法", default = "normal" },
     { id = 19236, name = "绝望祷言", default = "normal" },
     { id = 32379, name = "暗言术：灭", default = "normal" },
     { id = 88625, name = "圣言术：罚", default = "normal" },
@@ -83,7 +81,6 @@ NCF.RegisterSpells("PRIEST", 2, {
 local SPELL = {
     PowerWordFortitude = 21562,     -- 真言术：韧
     Purify = 527,                   -- 净化 (友方魔法驱散)
-    DispelMagic = 528,              -- 驱散魔法 (敌方增益驱散)
     DesperatePrayer = 19236,        -- 绝望祷言
     ShadowWordDeath = 32379,        -- 暗言术：灭
     HolyWordChastise = 88625,       -- 圣言术：罚
@@ -113,6 +110,7 @@ local BUFF = {
     EchoOfLight = 77489,            -- 回光 (HoT, 视为+5%血量)
     Lightweaver = 390993,           -- 织光者 (PoH治疗+18%, 读条-30%)
     Divinity = 1216314,             -- 神性 (PoH也变瞬发)
+    Benediction = 1262766,          -- 祝福 (FH+30%, 溅射4人200%SP)
 }
 
 --============================================================
@@ -141,7 +139,51 @@ local TALENT = {
     TrailOfLight = 2001208,         -- 光之踪迹 (FH+15%治疗)
     Spiritwell = 1247178,            -- 灵魂之井 (圣光涌动可被治疗祈祷消耗)
     PrayersOfTheVirtuous = 390977,  -- 美德祈祷 (愈合祷言7层/上限14, 否则5层/上限10)
+    ProphetWill = 433905,           -- 先知意志 (对自身FH治疗量+30%)
+    EfficientPrayers = 1247131,     -- 有效祈祷 (PoH法力值-15%)
+    HealingFocus = 1247166,         -- 治疗专注 (FH法力值-15%)
+    FocusedOutburst = 1272320,      -- 专注爆发 (PoH法力值-10%, 读条-15%)
 }
+
+--[[
+天赋对三大核心治疗技能的影响:
+
+=== 快速治疗 (Flash Heal, 2061) ===
+基础: 单体治疗, 系数 15.84, 有读条 (约1.25秒)
+- 光之踪迹 (TrailOfLight):       FH 治疗量 +15%
+- 圣光涌动 (SurgeOfLight buff):  FH 变为瞬发 + 免费 (最多2层, 施放FH消耗1层)
+- 织光者 (Lightweaver talent):   施放FH后获得织光者buff → 增强下一次PoH
+  → FH 不仅是治疗技能, 也是 PoH 的"准备技能"
+- 先知意志 (ProphetWill):        FH 对自身治疗量 +30%
+- 祝福 (Benediction buff):       FH 治疗量 +30%, 额外智能溅射4名缺血队友各200%SP, 施放FH消耗
+
+=== 治疗祈祷 (Prayer of Healing, 596) ===
+基础: 智能治疗最缺血的5人, 系数 7.89/人, 有读条 (约2秒)
+- 织光者buff (Lightweaver buff): PoH 治疗量 +18%, 读条 -30% (施放后消耗buff)
+- 虔诚连祷 (PrayerfulLitany):    PoH 主目标(最缺血的人) 治疗量 +125% (即 x2.25)
+- 灵魂之井 (Spiritwell):         PoH 也可消耗圣光涌动buff → PoH 变瞬发+免费
+- 神性buff (Divinity):           PoH 变为瞬发 (独立于圣光涌动)
+  → PoH 瞬发条件: (圣光涌动buff + 灵魂之井天赋) 或 神性buff
+
+=== 圣言术：静 (Holy Word: Serenity, 2050) ===
+基础: 强力单体治疗, 系数 33.00, 瞬发, 60秒CD
+- 奇迹工匠 (MiracleWorker):      2层充能 (默认1层), 更积极使用, 防止充能溢出
+- 终极宁静 (UltimateSerenity):    额外溅射治疗4名队友, 每人主治疗量的15%
+  → 溅射价值判断: 需要4+队友缺血量 >= serenityRaw*0.15 才值得考虑AoE收益
+- 神圣颂歌buff (Apotheosis):      加速圣言术CD恢复 → 充能回复更快, 可更积极使用
+
+=== 核心交互 ===
+织光者循环: FH(层数+1, 最多4层) → PoH(消耗1层, +18%) → FH → PoH → ...
+  代码 step 4.0 保证: 0层时强制FH, 确保PoH前至少有1层buff
+  读条预测: 读条FH中预测层数+1, 读条PoH中预测层数-1, 避免重复排队
+
+圣光涌动分配: 2层或即将过期时必须消耗
+  有灵魂之井: FH和PoH都可消耗 → 走效率比较选更优的技能
+  无灵魂之井: 只有FH能消耗 → 直接用FH
+
+回光 (EchoOfLight, mastery): 治疗后附加HoT
+  在FH vs PoH缺血量计算中, 有回光HoT的队友视为额外+5%有效血量, 减少过量治疗
+]]
 
 --============================================================
 -- 5. 从全局 NCF 表获取函数
@@ -166,8 +208,9 @@ local GetTankUnit = NCF.GetTankUnit
 local GetDispellableUnit = NCF.GetDispellableUnit
 local IsSpellInRange = NCF.IsSpellInRange
 local GetTrueDeficit = NCF.GetTrueDeficit
+local UnitIsUnit = NCF.UnitIsUnit
 
-local IsMidnight = select(4, GetBuildInfo()) >= 120000
+local IsMidnight = true
 
 --============================================================
 -- 6. 辅助函数
@@ -176,76 +219,59 @@ local IsMidnight = select(4, GetBuildInfo()) >= 120000
 -- 获取玩家法术强度 (智力)
 local function GetSpellPower()
     local _, sp = UnitStat("player", 4)
-    sp = secretunwrap(sp) 
     return sp
 end
 
--- 查找40码内血量低于阈值的敌人 (带LoS检查)
--- 用于命运扭转维持
+-- 查找范围内血量低于阈值的敌人 (IsSpellInRange负责射程+LoS检查)
 local function FindLowHealthEnemy(threshold, range)
     local results = {GetActiveEnemyAmount(range, false)}
     local count = results[1]
     for i = 2, count + 1 do
         local unit = results[i]
-        if GetUnitHealthPct(unit) < threshold then
-            -- LoS 检查
-            local x1, y1, z1 = NCF.API.GetPosition("player")
-            local x2, y2, z2 = NCF.API.GetPosition(unit)
-            if x1 and x2 then
-                local hit = NCF.API.RayTrace(x1, y1, z1 + 2, x2, y2, z2 + 2, 0x100111)
-                if not hit then
-                    return unit
-                end
-            end
+        if GetUnitHealthPct(unit) < threshold and IsSpellInRange(SPELL.Smite, unit) then
+            return unit
         end
     end
     return nil
 end
 
--- 查找范围内血量最低的敌人 (带LoS检查)
--- 用于圣言术：罚、神圣之火等DPS技能的目标选择
+-- 查找范围内血量最低的敌人 (IsSpellInRange负责射程+LoS检查)
 local function FindLowestHealthEnemy(range)
     local results = {GetActiveEnemyAmount(range, false)}
     local count = results[1]
-    local bestUnit = nil
-    local bestHp = 101
+    local bestUnit, bestHp = nil, 101
     for i = 2, count + 1 do
         local unit = results[i]
         local hp = GetUnitHealthPct(unit)
-        if hp < bestHp then
-            -- LoS 检查
-            local x1, y1, z1 = NCF.API.GetPosition("player")
-            local x2, y2, z2 = NCF.API.GetPosition(unit)
-            if x1 and x2 then
-                local hit = NCF.API.RayTrace(x1, y1, z1 + 2, x2, y2, z2 + 2, 0x100111)
-                if not hit then
-                    bestHp = hp
-                    bestUnit = unit
-                end
-            end
+        if hp < bestHp and IsSpellInRange(SPELL.Smite, unit) then
+            bestHp = hp
+            bestUnit = unit
         end
     end
     return bestUnit
 end
 
 -- 智能选择: 快速治疗 vs 治疗祈祷
--- 根据法强计算两个技能的有效治疗量 (扣除过量治疗), 按施法时间加权选择更高效的
--- 快速治疗: 单体, 系数 14.00, 读条0.625x PoH | 光之踪迹: +15%
--- 治疗祈祷: 智能治疗5人, 系数 7.00/人 | 虔诚连祷: 主目标+125% | 织光者buff: +18%读条-30%
--- 圣光涌动: FH变瞬发+省蓝 | 神性buff: PoH也瞬发
-local function ShouldCastPrayerOfHealing(members, sp, surgeActive)
-    local lightweaverActive = HasBuff(BUFF.Lightweaver, "player")
+-- 法力效率模式: 比较每点法力有效治疗量 (pohEff/pohMana vs fhEff/fhMana)
+-- 治疗量优先模式: 按施法时间加权比较有效治疗量
+-- FH基础法力: 7875 | PoH基础法力: 13125
+-- 治疗专注天赋: FH-15% | 有效祈祷天赋: PoH-15% | 专注爆发天赋: PoH-10%读条-15%
+-- 圣光涌动: FH法力-50%; 灵魂之井: PoH也享受-50%
+local function ShouldCastPrayerOfHealing(members, sp, surgeActive, predictedLwStacks, fhBonusMult, benedictionActive)
+    local lightweaverActive = predictedLwStacks > 0
     local divinityActive = HasBuff(BUFF.Divinity, "player")
     local hasPrayerfulLitany = HasTalent(TALENT.PrayerfulLitany)
     local hasTrailOfLight = HasTalent(TALENT.TrailOfLight)
+    local hasSpiritwell = HasTalent(TALENT.Spiritwell)
+    local hasFocusedOutburst = HasTalent(TALENT.FocusedOutburst)
 
     -- PoH: 基础 * 织光者buff
     local pohMult = lightweaverActive and 1.18 or 1.0
-    local pohRaw = sp * 7.00 * pohMult
+    local pohRaw = sp * 7.89 * pohMult
 
-    -- FH: 基础 * 光之踪迹天赋
+    -- FH: 基础 * 光之踪迹天赋 * 先知意志/祝福加成
     local fhMult = hasTrailOfLight and 1.15 or 1.0
-    local fhRaw = sp * 14.00 * fhMult
+    local fhRaw = sp * 15.84 * fhMult * (fhBonusMult or 1.0)
 
     -- 收集射程+LoS内队友的缺血量
     -- 有回光(Echo of Light)HoT的队友视为额外+5%血量, 减少实际缺血量
@@ -279,30 +305,58 @@ local function ShouldCastPrayerOfHealing(members, sp, surgeActive)
     -- 快速治疗有效治疗 = 最缺血的1人, min(fhRaw, 缺血量)
     local fhEffective = deficits[1] and math.min(fhRaw, deficits[1]) or 0
 
-    -- 施法时间加权 (基础比例 FH:PoH = 0.625:1)
-    -- PoH瞬发条件: 圣光涌动+灵魂之井, 或 神性buff
-    local pohInstant = (surgeActive and HasTalent(TALENT.Spiritwell)) or divinityActive
+    -- 祝福溅射: FH额外智能治疗4名缺血队友, 每人200%SP
+    if benedictionActive then
+        local fhSplash = sp * 2.0
+        for i = 2, math.min(5, #deficits) do
+            fhEffective = fhEffective + math.min(fhSplash, deficits[i])
+        end
+    end
+
+    local pohInstant = (surgeActive and hasSpiritwell) or divinityActive
     local fhInstant = surgeActive
 
-    local fhTimeWeight
-    if fhInstant and pohInstant then
-        fhTimeWeight = 1.0  -- 两者都瞬发
-    elseif fhInstant then
-        fhTimeWeight = lightweaverActive and 1.75 or 2.5  -- FH瞬发, PoH有/无织光者
-    elseif pohInstant then
-        fhTimeWeight = 0.625  -- PoH瞬发, FH正常读条, PoH更快
+    local usePoh
+    if NCF.holyPriestHealMode == "mana" then
+        -- 法力效率模式: pohEff/pohMana > fhEff/fhMana ⟺ pohEff*fhMana > fhEff*pohMana
+        local fhManaCost = 7875
+        if HasTalent(TALENT.HealingFocus) then fhManaCost = fhManaCost * 0.85 end
+        if fhInstant then fhManaCost = fhManaCost * 0.50 end  -- 圣光涌动-50%
+
+        local pohManaCost = 13125
+        if HasTalent(TALENT.EfficientPrayers) then pohManaCost = pohManaCost * 0.85 end
+        if hasFocusedOutburst then pohManaCost = pohManaCost * 0.90 end
+        if surgeActive and hasSpiritwell then pohManaCost = pohManaCost * 0.50 end  -- 灵魂之井-50%
+
+        if pohManaCost <= 0 then
+            usePoh = true
+        elseif fhManaCost <= 0 then
+            usePoh = false
+        else
+            usePoh = pohEffective * fhManaCost > fhEffective * pohManaCost
+        end
     else
-        fhTimeWeight = lightweaverActive and 1.12 or 1.6  -- 两者都读条
+        -- 治疗量优先模式: 按施法时间加权比较
+        -- 专注爆发天赋: PoH读条-15%, 降低PoH时间权重
+        local foMult = hasFocusedOutburst and 0.85 or 1.0
+        local fhTimeWeight
+        if fhInstant and pohInstant then
+            fhTimeWeight = 1.0
+        elseif fhInstant then
+            fhTimeWeight = (lightweaverActive and 1.75 or 2.5) * foMult
+        elseif pohInstant then
+            fhTimeWeight = 0.625
+        else
+            fhTimeWeight = (lightweaverActive and 1.12 or 1.6) * foMult
+        end
+        usePoh = pohEffective > fhEffective * fhTimeWeight
     end
-    local fhWeighted = fhEffective * fhTimeWeight
 
-    print(string.format("|cFF00FF00[NCF Holy]|r SP=%.0f | PoH有效=%.0f (%.0f/人x%d人%s%s) | FH有效=%.0f(加权%.0f, x%.2f) | 缺血人数=%d | 选择: %s",
-        sp, pohEffective, pohRaw, math.min(5, #deficits),
-        lightweaverActive and " 织光" or "", hasPrayerfulLitany and " 连祷" or "",
-        fhEffective, fhWeighted, fhTimeWeight, #deficits,
-        pohEffective > fhWeighted and "治疗祈祷" or "快速治疗"))
+    local recommend = benedictionActive and "Benediction FH" or (usePoh and "PoH" or "FH")
+    print(string.format("[NCF Holy] PoH=%.0f FH=%.0f members=%d mode=%s → %s",
+        pohEffective, fhEffective, #deficits, NCF.holyPriestHealMode, recommend))
 
-    return pohEffective > fhWeighted
+    return usePoh
 end
 
 -- 查找愈合祷言目标
@@ -379,12 +433,12 @@ _G.NCFpowerinfusion = function()
 end
 
 --============================================================
--- 8. 目标选择面板 (Holy Priest Target Selection — Dropdown)
+-- 8. 控制面板 (PI目标 + 净化模式 + 缺血面板)
 --============================================================
 
 local holyTargetPanel = nil
 
-local function CreateHolyTargetPanel()
+local function CreateHolyPanel()
     local BACKDROP = {
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\Buttons\\WHITE8X8",
@@ -394,34 +448,41 @@ local function CreateHolyTargetPanel()
     local DD_WIDTH = 160
     local ROW_HEIGHT = 20
     local ROW_SPACING = 24
+    local DEFICIT_ROW_HEIGHT = 14
+    local DEFICIT_COUNT = 5
     local PADDING = 5
+    local PANEL_WIDTH = 300
     local DEFAULT_LABEL = "选择队友"
     local REFRESH_LABEL = "刷新"
     local TARGET_LABEL  = "灌注目标:"
     local PURIFY_LABEL  = "净化模式:"
 
-    -- Initialize purify mode
     if not NCF.holyPriestPurifyMode then
         NCF.holyPriestPurifyMode = "auto"
     end
+    if not NCF.holyPriestHealMode then
+        NCF.holyPriestHealMode = "mana"
+    end
+    if not NCF.holyPriestHealModeKey then
+        NCF.holyPriestHealModeKey = ""
+    end
 
-    --=== Main bar ===
-    local frame = CreateFrame("Frame", "NCFHolyTargetPanel", UIParent, "BackdropTemplate")
-    frame:SetSize(300, PADDING + ROW_SPACING * 2 + PADDING)
-    frame:SetPoint("CENTER", UIParent, "CENTER",
-        _G.NCF_HOLY_TARGET_X or 0,
-        _G.NCF_HOLY_TARGET_Y or 0)
+    -- Panel height: 4 control rows + separator + 5 deficit rows
+    local controlHeight = PADDING + ROW_SPACING * 4 + PADDING
+    local deficitHeight = 2 + DEFICIT_ROW_HEIGHT * (DEFICIT_COUNT + 1)  -- separator + title + 5 rows
+    local totalHeight = controlHeight + deficitHeight + PADDING
+
+    --=== Main frame — left 1/3 of screen ===
+    local frame = CreateFrame("Frame", "NCFHolyPanel", UIParent, "BackdropTemplate")
+    frame:SetSize(PANEL_WIDTH, totalHeight)
+    local screenW = GetScreenWidth()
+    frame:SetPoint("LEFT", UIParent, "LEFT", screenW / 6 - PANEL_WIDTH / 2, 0)
     frame:SetMovable(true)
     frame:EnableMouse(true)
     frame:RegisterForDrag("LeftButton")
     frame:SetScript("OnDragStart", frame.StartMoving)
     frame:SetScript("OnDragStop", function(self)
         self:StopMovingOrSizing()
-        local cx, cy = UIParent:GetCenter()
-        local fx, fy = self:GetCenter()
-        _G.NCF_HOLY_TARGET_X = fx - cx
-        _G.NCF_HOLY_TARGET_Y = fy - cy
-        if NCF.SaveConfig then NCF.SaveConfig() end
     end)
     frame:SetFrameStrata("DIALOG")
     frame:SetBackdrop(BACKDROP)
@@ -439,13 +500,14 @@ local function CreateHolyTargetPanel()
     })
     shadow:SetBackdropBorderColor(0, 0, 0, 0.5)
 
-    -- Row 1: "灌注目标:" label
+    --========================================
+    -- Row 1: PI target dropdown + refresh
+    --========================================
     local label = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     label:SetPoint("TOPLEFT", PADDING + 2, -(PADDING + 2))
     label:SetText(TARGET_LABEL)
     label:SetTextColor(0.9, 0.8, 0.5)
 
-    --=== Dropdown button ===
     local ddBtn = CreateFrame("Button", nil, frame)
     ddBtn:SetSize(DD_WIDTH, 20)
     ddBtn:SetPoint("LEFT", label, "RIGHT", 6, 0)
@@ -477,17 +539,15 @@ local function CreateHolyTargetPanel()
         ddBd:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
     end)
 
-    --=== Dropdown popup ===
     local popup = CreateFrame("Frame", nil, ddBtn, "BackdropTemplate")
     popup:SetFrameStrata("FULLSCREEN_DIALOG")
     popup:SetPoint("TOP", ddBtn, "BOTTOM", 0, -1)
-    popup:SetSize(DD_WIDTH, 22)  -- resized on refresh
+    popup:SetSize(DD_WIDTH, 22)
     popup:SetBackdrop(BACKDROP)
     popup:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
     popup:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
     popup:Hide()
 
-    -- Click-away dismiss
     local clickAway = CreateFrame("Button", nil, popup)
     clickAway:SetFrameStrata("FULLSCREEN")
     clickAway:SetAllPoints(UIParent)
@@ -501,7 +561,6 @@ local function CreateHolyTargetPanel()
         if popup:IsShown() then popup:Hide() else popup:Show() end
     end)
 
-    --=== Refresh button ===
     local refreshBtn = CreateFrame("Button", nil, frame, "BackdropTemplate")
     refreshBtn:SetSize(40, 20)
     refreshBtn:SetPoint("LEFT", ddBtn, "RIGHT", 4, 0)
@@ -523,7 +582,9 @@ local function CreateHolyTargetPanel()
         self:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
     end)
 
-    --=== Row 2: Purify mode ===
+    --========================================
+    -- Row 2: Purify mode
+    --========================================
     local purifyLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     purifyLabel:SetPoint("TOPLEFT", PADDING + 2, -(PADDING + 2 + ROW_SPACING))
     purifyLabel:SetText(PURIFY_LABEL)
@@ -534,7 +595,6 @@ local function CreateHolyTargetPanel()
         {value = "mouseover", text = "|cFFFFFF00鼠标净化|r"},
     }
 
-    -- Purify dropdown button
     local purifyBtn = CreateFrame("Button", nil, frame)
     purifyBtn:SetSize(100, 20)
     purifyBtn:SetPoint("LEFT", purifyLabel, "RIGHT", 6, 0)
@@ -565,7 +625,6 @@ local function CreateHolyTargetPanel()
         purifyBd:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
     end)
 
-    -- Purify popup
     local purifyPopup = CreateFrame("Frame", nil, purifyBtn, "BackdropTemplate")
     purifyPopup:SetFrameStrata("FULLSCREEN_DIALOG")
     purifyPopup:SetPoint("TOP", purifyBtn, "BOTTOM", 0, -1)
@@ -611,7 +670,189 @@ local function CreateHolyTargetPanel()
         end)
     end
 
-    --=== Row pool for popup items ===
+    --========================================
+    -- Row 3: 治疗模式切换
+    --========================================
+    local healModeLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    healModeLabel:SetPoint("TOPLEFT", PADDING + 2, -(PADDING + 2 + ROW_SPACING * 2))
+    healModeLabel:SetText("治疗模式:")
+    healModeLabel:SetTextColor(0.9, 0.8, 0.5)
+
+    local function GetHealModeText()
+        return NCF.holyPriestHealMode == "mana"
+            and "|cFF00CCFF法力效率|r"
+            or  "|cFFFFAA00治疗量优先|r"
+    end
+
+    local healModeBtn = CreateFrame("Button", nil, frame, "BackdropTemplate")
+    healModeBtn:SetSize(120, 20)
+    healModeBtn:SetPoint("LEFT", healModeLabel, "RIGHT", 6, 0)
+    healModeBtn:SetBackdrop(BACKDROP)
+    healModeBtn:SetBackdropColor(0.12, 0.12, 0.12, 0.9)
+    healModeBtn:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
+
+    local healModeBtnLabel = healModeBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    healModeBtnLabel:SetPoint("CENTER")
+    healModeBtnLabel:SetText(GetHealModeText())
+
+    healModeBtn:SetScript("OnEnter", function(self)
+        self:SetBackdropColor(0.18, 0.18, 0.18, 0.9)
+        self:SetBackdropBorderColor(0.5, 0.5, 0.5, 1)
+    end)
+    healModeBtn:SetScript("OnLeave", function(self)
+        self:SetBackdropColor(0.12, 0.12, 0.12, 0.9)
+        self:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
+    end)
+    healModeBtn:SetScript("OnClick", function()
+        NCF.holyPriestHealMode = NCF.holyPriestHealMode == "mana" and "hps" or "mana"
+        healModeBtnLabel:SetText(GetHealModeText())
+        print(string.format("|cFF00FF00[NCF Holy]|r 治疗模式: %s", GetHealModeText()))
+    end)
+
+    --========================================
+    -- Row 4: 快捷键设置
+    --========================================
+    local keybindLabel = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    keybindLabel:SetPoint("TOPLEFT", PADDING + 2, -(PADDING + 2 + ROW_SPACING * 3))
+    keybindLabel:SetText("切换快捷键:")
+    keybindLabel:SetTextColor(0.9, 0.8, 0.5)
+
+    local function FormatKey(key)
+        return (key and key ~= "") and key or "|cFF888888未设置|r"
+    end
+
+    local keyDisplay = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    keyDisplay:SetPoint("LEFT", keybindLabel, "RIGHT", 6, 0)
+    keyDisplay:SetText(FormatKey(NCF.holyPriestHealModeKey))
+    keyDisplay:SetTextColor(1, 1, 1)
+
+    local setKeyBtn = CreateFrame("Button", nil, frame, "BackdropTemplate")
+    setKeyBtn:SetSize(40, 18)
+    setKeyBtn:SetPoint("RIGHT", frame, "RIGHT", -PADDING, -(PADDING + 2 + ROW_SPACING * 3 + 1))
+    setKeyBtn:SetBackdrop(BACKDROP)
+    setKeyBtn:SetBackdropColor(0.15, 0.15, 0.15, 0.9)
+    setKeyBtn:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
+
+    local setKeyText = setKeyBtn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    setKeyText:SetPoint("CENTER")
+    setKeyText:SetText("设置")
+    setKeyText:SetTextColor(0.8, 0.8, 0.8)
+
+    setKeyBtn:SetScript("OnEnter", function(self)
+        self:SetBackdropColor(0.25, 0.25, 0.25, 0.9)
+        self:SetBackdropBorderColor(0.5, 0.5, 0.5, 1)
+    end)
+    setKeyBtn:SetScript("OnLeave", function(self)
+        self:SetBackdropColor(0.15, 0.15, 0.15, 0.9)
+        self:SetBackdropBorderColor(0.3, 0.3, 0.3, 1)
+    end)
+
+    local capturing = false
+    local hotkeyFrame = CreateFrame("Frame", "NCFHolyHotkeyFrame", UIParent)
+    hotkeyFrame:EnableKeyboard(true)
+    hotkeyFrame:SetPropagateKeyboardInput(true)
+    hotkeyFrame:SetAllPoints()
+
+    hotkeyFrame:SetScript("OnKeyDown", function(self, key)
+        if key == "LCTRL" or key == "RCTRL" or key == "LALT" or key == "RALT"
+            or key == "LSHIFT" or key == "RSHIFT" then return end
+
+        if capturing then
+            capturing = false
+            setKeyText:SetText("设置")
+            setKeyBtn:SetBackdropColor(0.15, 0.15, 0.15, 0.9)
+            if key == "ESCAPE" then
+                NCF.holyPriestHealModeKey = ""
+                keyDisplay:SetText(FormatKey(""))
+            else
+                local mod = ""
+                if IsControlKeyDown() then mod = mod .. "CTRL-" end
+                if IsAltKeyDown()     then mod = mod .. "ALT-"  end
+                if IsShiftKeyDown()   then mod = mod .. "SHIFT-" end
+                NCF.holyPriestHealModeKey = mod .. key
+                keyDisplay:SetText(NCF.holyPriestHealModeKey)
+            end
+            return
+        end
+
+        if NCF.holyPriestHealModeKey ~= "" then
+            local mod = ""
+            if IsControlKeyDown() then mod = mod .. "CTRL-" end
+            if IsAltKeyDown()     then mod = mod .. "ALT-"  end
+            if IsShiftKeyDown()   then mod = mod .. "SHIFT-" end
+            if mod .. key == NCF.holyPriestHealModeKey then
+                NCF.holyPriestHealMode = NCF.holyPriestHealMode == "mana" and "hps" or "mana"
+                healModeBtnLabel:SetText(GetHealModeText())
+                print(string.format("|cFF00FF00[NCF Holy]|r 治疗模式: %s", GetHealModeText()))
+            end
+        end
+    end)
+
+    setKeyBtn:SetScript("OnClick", function(self)
+        capturing = true
+        setKeyText:SetText("...")
+        self:SetBackdropColor(0.3, 0.5, 0.2, 0.9)
+        self:SetBackdropBorderColor(0.5, 0.8, 0.3, 1)
+        print("|cFF00FF00[NCF Holy]|r 请按下快捷键 (ESC 清除绑定)")
+    end)
+
+    --========================================
+    -- Separator line
+    --========================================
+    local sep = frame:CreateTexture(nil, "ARTWORK")
+    sep:SetHeight(1)
+    sep:SetPoint("TOPLEFT", PADDING, -controlHeight)
+    sep:SetPoint("TOPRIGHT", -PADDING, -controlHeight)
+    sep:SetColorTexture(0.3, 0.3, 0.3, 0.8)
+
+    --========================================
+    -- Deficit rows (5 most wounded)
+    --========================================
+    local deficitTop = controlHeight + 2
+
+    local deficitTitle = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    deficitTitle:SetPoint("TOPLEFT", PADDING + 2, -deficitTop)
+    deficitTitle:SetText("|cFF00FF00缺血面板|r")
+
+    local function AbbreviateNumber(n)
+        if n >= 1000000 then
+            return string.format("%.1fM", n / 1000000)
+        elseif n >= 1000 then
+            return string.format("%.0fK", n / 1000)
+        end
+        return string.format("%.0f", n)
+    end
+
+    local deficitRows = {}
+    for i = 1, DEFICIT_COUNT do
+        local row = frame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        row:SetPoint("TOPLEFT", PADDING + 2, -deficitTop - DEFICIT_ROW_HEIGHT * i)
+        row:SetPoint("RIGHT", frame, "RIGHT", -PADDING, 0)
+        row:SetJustifyH("LEFT")
+        row:SetText("")
+        deficitRows[i] = row
+    end
+
+    frame:SetScript("OnUpdate", function(self, elapsed)
+        self.elapsed = (self.elapsed or 0) + elapsed
+        if self.elapsed < 0.15 then return end
+        self.elapsed = 0
+        local data = NCF.holyDeficitData
+        if not data then return end
+        for i = 1, DEFICIT_COUNT do
+            local d = data[i]
+            if d then
+                local color = d.hp < 50 and "FF4444" or (d.hp < 75 and "FFAA00" or "AAAAAA")
+                deficitRows[i]:SetText(string.format("|cFF%s%s  %.0f%%  -%s|r", color, d.name, d.hp, AbbreviateNumber(d.deficit)))
+            else
+                deficitRows[i]:SetText("")
+            end
+        end
+    end)
+
+    --========================================
+    -- PI target row pool + refresh
+    --========================================
     local rowPool = {}
     local rowCount = 0
 
@@ -631,7 +872,6 @@ local function CreateHolyTargetPanel()
         row:SetScript("OnLeave", function() rowBg:SetColorTexture(1, 1, 1, 0) end)
         row:SetScript("OnClick", function(self)
             NCF.holyPriestSelectedTarget = self.unit
-            -- Update dropdown label with class-colored name
             local name = self.displayName or self.unit
             local c = self.classColor or {r = 0.8, g = 0.8, b = 0.8}
             ddLabel:SetText(string.format("|cFF%02x%02x%02x%s|r", c.r * 255, c.g * 255, c.b * 255, name))
@@ -643,7 +883,6 @@ local function CreateHolyTargetPanel()
         return row
     end
 
-    --=== Refresh: rebuild popup rows ===
     local function RefreshMembers()
         for i = 1, #rowPool do
             rowPool[i]:Hide()
@@ -671,10 +910,7 @@ local function CreateHolyTargetPanel()
             row.classColor = color
             row.nameText:SetText(string.format("|cFF%02x%02x%02x%s|r", color.r * 255, color.g * 255, color.b * 255, name))
 
-            -- Check if this is the current selection
-            local isSelected = selectedTarget and UnitIsUnit(unit, selectedTarget)
-            if IsMidnight and isSelected ~= nil then isSelected = secretunwrap(isSelected) end
-            if isSelected then
+            if selectedTarget and UnitIsUnit(unit, selectedTarget) then
                 foundSelection = true
                 ddLabel:SetText(string.format("|cFF%02x%02x%02x%s|r", color.r * 255, color.g * 255, color.b * 255, name))
             end
@@ -683,14 +919,12 @@ local function CreateHolyTargetPanel()
             rowCount = idx
         end
 
-        -- Clear selection if target left group
         if not foundSelection then
             NCF.holyPriestSelectedTarget = nil
             ddLabel:SetText(DEFAULT_LABEL)
             ddLabel:SetTextColor(0.6, 0.6, 0.6)
         end
 
-        -- Resize popup
         popup:SetSize(DD_WIDTH, rowCount * ROW_HEIGHT + 2)
     end
 
@@ -704,7 +938,7 @@ local function CreateHolyTargetPanel()
     return frame
 end
 
-holyTargetPanel = CreateHolyTargetPanel()
+holyTargetPanel = CreateHolyPanel()
 
 _G.NCFholytarget = function()
     holyTargetPanel:RefreshMembers()
@@ -771,13 +1005,55 @@ local function CreateHolyRotation()
         local myHp = GetUnitHealthPct("player")
         local tankUnit = GetTankUnit()
         local sp = GetSpellPower()
-        local fhRaw = sp * 14.00               -- 快速治疗基础治疗量
-        local serenityRaw = sp * 23.00          -- 圣言术：静基础治疗量
+        local serenityRaw = sp * 33.00          -- 圣言术：静基础治疗量
 
         -- 圣光涌动: 快速治疗变为瞬发, 省蓝 (灵魂之井天赋下PoH也可消耗)
         local surgeStacks = GetBuffStacks(BUFF.SurgeOfLight, "player")
         local surgeRemain = GetBuffRemain(BUFF.SurgeOfLight, "player")
         local surgeActive = surgeStacks > 0
+
+        -- 祝福buff: FH+30%, 溅射4人200%SP, 施放FH消耗
+        local benedictionActive = HasBuff(BUFF.Benediction, "player")
+
+        -- 读条预测: 织光者层数 + 祝福消耗
+        local lightweaverStacks = GetBuffStacks(BUFF.Lightweaver, "player")
+        local predictedLwStacks = lightweaverStacks
+        local hasLightweaverTalent = HasTalent(TALENT.Lightweaver)
+        if hasLightweaverTalent or benedictionActive then
+            local castingSpellID = select(9, UnitCastingInfo("player"))
+            if IsMidnight and castingSpellID then castingSpellID = secretunwrap(castingSpellID) end
+            castingSpellID = castingSpellID and tonumber(castingSpellID)
+            if castingSpellID == SPELL.FlashHeal then
+                if hasLightweaverTalent then
+                    predictedLwStacks = math.min(lightweaverStacks + 1, 4)
+                end
+                benedictionActive = false  -- FH消耗祝福buff
+            elseif castingSpellID == SPELL.PrayerOfHealing and hasLightweaverTalent then
+                predictedLwStacks = math.max(lightweaverStacks - 1, 0)
+            end
+        end
+
+        -- FH加成: 先知意志(对自身+30%) + 祝福buff(+30%), 在读条预测之后计算
+        local hasProphetWill = HasTalent(TALENT.ProphetWill)
+        local prophetWillMult = (hasProphetWill and lowestUnit and UnitIsUnit(lowestUnit, "player")) and 1.30 or 1.0
+        local benedictionMult = benedictionActive and 1.30 or 1.0
+        local fhBonusMult = prophetWillMult * benedictionMult
+        local fhRaw = sp * 15.84 * fhBonusMult  -- 快速治疗基础治疗量 (含加成)
+
+        -- 缺血面板数据: 收集前5名缺血最多的队友
+        do
+            local ddata = {}
+            for _, unit in ipairs(members) do
+                local deficit = GetTrueDeficit(unit)
+                if deficit > 0 then
+                    local name = UnitName(unit) or unit
+                    local hp = GetUnitHealthPct(unit)
+                    ddata[#ddata + 1] = { name = name, deficit = deficit, hp = hp }
+                end
+            end
+            table.sort(ddata, function(a, b) return a.deficit > b.deficit end)
+            NCF.holyDeficitData = ddata
+        end
 
         --========================================
         -- 0. 战前增益: 真言术：韧
@@ -820,16 +1096,6 @@ local function CreateHolyRotation()
         end
 
         --========================================
-        -- 0.5 进攻驱散: 驱散魔法 (敌方增益)
-        --========================================
-        if IsReady(SPELL.DispelMagic) and not ShouldSkipSpell(SPELL.DispelMagic) then
-            local enemyDispel = GetDispellableUnit("Magic", 30, true)
-            if enemyDispel then
-                return "InstantSpell", SPELL.DispelMagic, enemyDispel
-            end
-        end
-
-        --========================================
         -- 战斗门槛
         --========================================
         if not NCF.IsInCombat() then
@@ -858,41 +1124,7 @@ local function CreateHolyRotation()
         end
 
         --========================================
-        -- 1. 命运扭转 (Twist of Fate) 维持
-        -- 有天赋且无buff时, 攻击 <35% 血量的敌人来触发
-        --========================================
-        if HasTalent(TALENT.TwistOfFate) and not HasBuff(BUFF.TwistOfFate, "player") then
-            local lowEnemy = FindLowHealthEnemy(35, 40)
-            if lowEnemy then
-                -- 1.1 暗言术：灭 (瞬发, 不需要面朝)
-                if HasTalent(TALENT.ShadowWordDeath) and IsReady(SPELL.ShadowWordDeath) and not ShouldSkipSpell(SPELL.ShadowWordDeath) then
-                    return "InstantSpell", SPELL.ShadowWordDeath, lowEnemy
-                end
-
-                -- 1.2 圣言术：罚 (瞬发, 不需要面朝)
-                if HasTalent(TALENT.HolyWordChastise) and IsReady(SPELL.HolyWordChastise) and not ShouldSkipSpell(SPELL.HolyWordChastise) then
-                    return "InstantSpell", SPELL.HolyWordChastise, lowEnemy
-                end
-
-                -- 1.3 神圣之火 (炽热星火buff下变为瞬发)
-                if HasBuff(BUFF.EmpyrealBlaze, "player") and HasTalent(TALENT.HolyFire) and IsReady(SPELL.HolyFire) and not ShouldSkipSpell(SPELL.HolyFire) then
-                    return "InstantSpell", SPELL.HolyFire, lowEnemy
-                end
-
-                -- 1.4 神圣之火 (需要站桩, 对低血量敌人)
-                if not isMoving and HasTalent(TALENT.HolyFire) and IsReady(SPELL.HolyFire) and not ShouldSkipSpell(SPELL.HolyFire) then
-                    return "spell", SPELL.HolyFire, lowEnemy
-                end
-
-                -- 1.5 惩击 (需要站桩, fallback, 对低血量敌人)
-                if not isMoving and IsReady(SPELL.Smite) and not ShouldSkipSpell(SPELL.Smite) then
-                    return "spell", SPELL.Smite, lowEnemy
-                end
-            end
-        end
-
-        --========================================
-        -- 2. 愈合祷言 (Prayer of Mending)
+        -- 1. 愈合祷言 (Prayer of Mending)
         -- 优先坦克, 美德祈祷: 7层/上限14, 否则5层/上限10
         --========================================
         if IsReady(SPELL.PrayerOfMending) and not ShouldSkipSpell(SPELL.PrayerOfMending) then
@@ -959,7 +1191,7 @@ local function CreateHolyRotation()
             else
                 -- 无奇迹工匠 + 无神圣颂歌: 常规判断
                 -- 3.7 最低缺血量 > 快速治疗 * 2
-                if lowestDeficit > fhRaw * 2 then
+                if lowestDeficit > fhRaw * 1.75 then
                     shouldCast = true
                 -- 3.8 终极宁静: 主目标缺血量够大 + 4+队友需要溅射
                 elseif hasUltimateSerenity and lowestDeficit > fhRaw * 1.5 and CountDeficitMembers(members, ultimateSerenityPerTarget, SPELL.HolyWordSerenity) >= 4 then
@@ -975,6 +1207,35 @@ local function CreateHolyRotation()
             end
         end
 
+        --========================================
+        -- 3.5 命运扭转 (Twist of Fate) 维持
+        -- 有天赋且无buff时, 攻击 <35% 血量的敌人来触发
+        --========================================
+        if HasTalent(TALENT.TwistOfFate) and not HasBuff(BUFF.TwistOfFate, "player") then
+            local lowEnemy = FindLowHealthEnemy(35, 40)
+            if lowEnemy then
+                -- 暗言术：灭 (瞬发)
+                if HasTalent(TALENT.ShadowWordDeath) and IsReady(SPELL.ShadowWordDeath) and not ShouldSkipSpell(SPELL.ShadowWordDeath) then
+                    return "InstantSpell", SPELL.ShadowWordDeath, lowEnemy
+                end
+                -- 圣言术：罚 (瞬发)
+                if HasTalent(TALENT.HolyWordChastise) and IsReady(SPELL.HolyWordChastise) and not ShouldSkipSpell(SPELL.HolyWordChastise) then
+                    return "InstantSpell", SPELL.HolyWordChastise, lowEnemy
+                end
+                -- 神圣之火 (炽热星火buff下瞬发)
+                if HasBuff(BUFF.EmpyrealBlaze, "player") and HasTalent(TALENT.HolyFire) and IsReady(SPELL.HolyFire) and not ShouldSkipSpell(SPELL.HolyFire) then
+                    return "InstantSpell", SPELL.HolyFire, lowEnemy
+                end
+                -- 神圣之火 (需要站桩)
+                if not isMoving and HasTalent(TALENT.HolyFire) and IsReady(SPELL.HolyFire) and not ShouldSkipSpell(SPELL.HolyFire) then
+                    return "spell", SPELL.HolyFire, lowEnemy
+                end
+                -- 惩击 (需要站桩, fallback)
+                if not isMoving and IsReady(SPELL.Smite) and not ShouldSkipSpell(SPELL.Smite) then
+                    return "spell", SPELL.Smite, lowEnemy
+                end
+            end
+        end
 
         --========================================
         -- 4. 快速治疗 vs 治疗祈祷
@@ -986,7 +1247,7 @@ local function CreateHolyRotation()
 
         -- 4.0 织光者: 无buff时先FH获取buff, 为下次PoH增强做准备
         -- 移动中跳过 (FH有读条), 除非圣光涌动使其瞬发
-        if HasTalent(TALENT.Lightweaver) and not HasBuff(BUFF.Lightweaver, "player")
+        if hasLightweaverTalent and predictedLwStacks == 0
             and (not isMoving or surgeActive) then
             if lowestUnit and IsReady(SPELL.FlashHeal) and not ShouldSkipSpell(SPELL.FlashHeal) then
                 return "spell", SPELL.FlashHeal, lowestUnit
@@ -999,7 +1260,7 @@ local function CreateHolyRotation()
         if surgeUrgent and lowestUnit then
             if hasSpiritwell and HasTalent(TALENT.PrayerOfHealing) and IsReady(SPELL.PrayerOfHealing) and not ShouldSkipSpell(SPELL.PrayerOfHealing) then
                 -- 灵魂之井: PoH也能消耗圣光涌动, 走正常比较选更优
-                if ShouldCastPrayerOfHealing(members, sp, surgeActive) then
+                if ShouldCastPrayerOfHealing(members, sp, surgeActive, predictedLwStacks, fhBonusMult, benedictionActive) then
                     return "spell", SPELL.PrayerOfHealing, lowestUnit
                 end
             end
@@ -1016,7 +1277,7 @@ local function CreateHolyRotation()
 
         -- 非紧急: 正常FH vs PoH比较
         if lowestUnit and HasTalent(TALENT.PrayerOfHealing) and IsReady(SPELL.PrayerOfHealing) and not ShouldSkipSpell(SPELL.PrayerOfHealing) then
-            if ShouldCastPrayerOfHealing(members, sp, surgeActive) then
+            if ShouldCastPrayerOfHealing(members, sp, surgeActive, predictedLwStacks, fhBonusMult, benedictionActive) then
                 return "spell", SPELL.PrayerOfHealing, lowestUnit
             end
         end
